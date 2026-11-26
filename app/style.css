@@ -19,3 +19,18 @@ body.dark{color-scheme:dark;--bg:#141d2c;--panel:#1a2638;--ink:#e0e8f5;--muted:#
 .macro-map .node-select{min-height:98px}.overview-panel .graph-note{padding-top:6px;padding-bottom:6px}
 .code-scroll pre{font-size:13px}
 @media(min-width:861px){.inspector-hidden .workspace{grid-template-columns:minmax(0,1fr)}.inspector-hidden .inspector{display:none}}
+/* A wide hit area makes the split pane easy to resize without covering content. */
+.panel-resizer{display:none}
+@media(min-width:861px){
+ .workspace{position:relative;--default-inspector-width:440px;grid-template-columns:minmax(0,1fr) var(--inspector-width,var(--default-inspector-width))}
+ .panel-resizer{display:block;position:absolute;top:0;bottom:0;right:calc(var(--inspector-width,var(--default-inspector-width)) - 6px);width:12px;z-index:5;cursor:col-resize;touch-action:none;outline-offset:-2px}
+ .panel-resizer::after{content:'';position:absolute;top:50%;left:4px;width:4px;height:38px;transform:translateY(-50%);border-radius:3px;background:var(--muted);opacity:.5}
+ .panel-resizer:hover,.panel-resizer:focus-visible,.resizing-inspector .panel-resizer{background:color-mix(in srgb,var(--blue) 15%,transparent)}
+ .panel-resizer:hover::after,.panel-resizer:focus-visible::after,.resizing-inspector .panel-resizer::after{background:var(--blue);opacity:1}
+ .inspector-hidden .workspace{grid-template-columns:minmax(0,1fr)}
+ .inspector-hidden .panel-resizer{display:none}
+ .resizing-inspector,.resizing-inspector *{cursor:col-resize!important;user-select:none!important}
+ .inspector{min-width:0}
+}
+@media(min-width:861px) and (max-width:1120px){.workspace{--default-inspector-width:390px}}
+@media(min-width:1600px){.workspace{--default-inspector-width:490px}}

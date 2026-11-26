@@ -1,3 +1,4 @@
+import {setupInspectorResize} from './panel-resize.js';
 const registry=await fetch(new URL('../features/registry.json',import.meta.url)).then(r=>r.json());
 const feature=registry.find(f=>f.id===new URLSearchParams(location.search).get('feature'))||registry[0];
 const atlas=await fetch(new URL('../features/'+feature.data.replace(/^\.\//,''),import.meta.url)).then(r=>{if(!r.ok)throw Error('无法载入特性数据');return r.json()});
@@ -17,7 +18,7 @@ document.querySelector('#app').innerHTML=`
 <div class="workspace"><main class="main-panel"><div class="page-heading"><div class="breadcrumbs" id="breadcrumbs"></div><div class="heading-row"><h1 id="scene-title"></h1><button id="guide">本框架导读</button></div><p id="scene-description"></p></div>
 <div class="graph-toolbar"><div><span class="repo-dot vllm"></span> vLLM <span class="repo-dot ascend"></span> Ascend <span id="node-count"></span></div><div class="graph-actions"><select id="backend" aria-label="通信后端阅读路径"></select><button id="zoom-out" aria-label="缩小画布">−</button><button id="fit">适应</button><button id="zoom-in" aria-label="放大画布">＋</button></div></div>
 <div class="graph-stage" id="stage"><div id="canvas-wrap"><div id="canvas"></div></div></div><div class="graph-note" id="graph-note"></div><footer class="graph-footer"><span>点击节点读原理和源码 · 蓝色入口展开子流程</span><button id="show-detail">查看讲解</button></footer></main>
-<aside class="inspector" aria-label="节点详情"><div class="inspector-heading"><span>阅读助手 <small>PRINCIPLE · TENSOR · SOURCE</small></span><button id="close-detail" aria-label="收起讲解">×</button></div><div id="detail"></div></aside></div>
+<div class="panel-resizer" role="separator" aria-label="调整右侧面板宽度" aria-orientation="vertical" aria-controls="detail" tabindex="0" title="左右拖动调整宽度；双击恢复默认；方向键微调"></div><aside class="inspector" aria-label="节点详情"><div class="inspector-heading"><span>阅读助手 <small>PRINCIPLE · TENSOR · SOURCE</small></span><button id="close-detail" aria-label="收起讲解">×</button></div><div id="detail"></div></aside></div>
 <dialog id="info-dialog"><button class="dialog-close" aria-label="关闭版本说明">×</button><span class="eyebrow">FIXED SOURCE / ${esc(manifest.version)}</span><h2>版本与核查说明</h2><p>${esc(manifest.audit?.intro||manifest.coverage)}</p><table><tr><th>材料</th><th>版本</th></tr>${[...Object.entries(manifest.versions).map(([k,v])=>({label:'本站 '+k,sha:v.sha})),...(manifest.audit?.comparison||[])].map(v=>`<tr><td>${esc(v.label)}</td><td><code>${esc(v.sha)}</code></td></tr>`).join('')}</table><p>${esc(manifest.audit?.conclusion||manifest.coverage)}</p>${manifest.audit?.report?`<a href="${esc(manifest.audit.report)}" target="_blank" rel="noreferrer">阅读逐项核查与源码依据</a>`:''}<p>${manifest.audit?.reference?`<a href="${esc(manifest.audit.reference)}" target="_blank" rel="noreferrer">课程参考</a> · `:''}<a href="https://github.com/ZYY-ing/feature-atlas/blob/main/docs/adding-features.md" target="_blank" rel="noreferrer">开发者：扩展新特性</a></p></dialog>`;
 
 document.querySelector('.brand').onclick=e=>{e.preventDefault();changeScene('overview')};
@@ -29,6 +30,7 @@ document.querySelector('.dialog-close').onclick=()=>document.querySelector('dial
 document.querySelector('#theme').onclick=()=>{document.body.classList.toggle('dark');localStorage.setItem('feature-atlas-theme',document.body.classList.contains('dark')?'dark':'light')};
 document.querySelector('#close-detail').onclick=()=>{document.body.classList.remove('detail-open');document.body.classList.add('inspector-hidden')};
 document.querySelector('#show-detail').onclick=()=>{document.body.classList.remove('inspector-hidden');document.body.classList.add('detail-open')};
+setupInspectorResize(document.querySelector('.workspace'),document.querySelector('.panel-resizer'));
 document.querySelector('#zoom-in').onclick=()=>zoom(.1);document.querySelector('#zoom-out').onclick=()=>zoom(-.1);document.querySelector('#fit').onclick=fit;
 document.querySelector('#backend').onchange=e=>{state.backend=e.target.value;state.selected=null;state.tab='principle';render();urlState()};
 window.addEventListener('hashchange',()=>{restore();render()});
