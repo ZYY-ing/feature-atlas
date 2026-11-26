@@ -49,3 +49,4 @@ export const manifest={id:'ep',name:'Expert Parallelism',label:'EP 专家并行'
 const commScene=scenes.find(s=>s.id==='comm');
 commScene.variants={ALLTOALL:{label:'All-to-All',ids:commScene.ids,edges:commScene.edges}};
 for(const [key,id] of Object.entries({ALLGATHER:'allgather',MC2:'mc2',FUSED_MC2:'fused'}))commScene.variants[key]={label:key==='ALLGATHER'?'AllGather':key,ids:['select',id,'mlp','finalize'],edges:[['select',id,'后端选择'],[id,'mlp',key==='FUSED_MC2'?'融合执行概念':'计算阶段'],['mlp','finalize','结果恢复']]};
+commScene.variants.FUSED_MC2={label:'FUSED_MC2',ids:['select','fused','finalize'],edges:[['select','fused','后端选择'],['fused','finalize','融合结果恢复']]};
