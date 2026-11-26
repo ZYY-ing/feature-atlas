@@ -34,19 +34,61 @@ n('offload-check','Offload 支持边界','ascend','vllm_ascend/distributed/exper
 n('residency','准备驻留专家','ascend','vllm_ascend/distributed/expert_transfer/expert_offload_manager.py','    def prepare(self, layer, topk_ids):', 'LayerOffloadBinding.prepare','Decode 工作集可容纳时命中保留、缺失加载；Prefill/超容量使用一层全专家池。','本批 Top-K 专家集合','执行权重视图与槽位 ID','整批专家并集可能大于单 Token Top-K。'),
 n('offload-exec','复用量化专家执行','ascend','vllm_ascend/distributed/expert_transfer/expert_offload_method.py','    def apply(', 'ExpertOffloadMoEMethod.apply','临时切换执行权重视图与通信对象，使用原生量化计算，finally 恢复上下文。','已驻留权重、物理槽位 ID','保持逻辑路由语义的输出')
 ];
-export const scenes=[
-{id:'overview',name:'跨仓库总览',en:'CROSS-REPOSITORY',desc:'从上游工厂到 Ascend 执行，再进入上游继承钩子。总览边表示阶段与依赖，不是逐条运行轨迹。',ids:['factory','runner','transform','routed','comm','mlp','finalize','return'],edges:[['factory','runner','覆盖解析'],['runner','transform','继承调用'],['transform','routed','流程展开'],['routed','comm','量化方法委派'],['comm','mlp','直接调用'],['mlp','finalize','结果恢复'],['finalize','return','输出钩子']]},
-{id:'init',name:'初始化与上下文',en:'INITIALIZATION',desc:'建立执行管线、注册通信实例，并为每批输入选择策略。专家加载与并行组内部尚未逐项展开。',ids:['factory','runner','setup','select','context'],edges:[['factory','runner','覆盖解析'],['runner','setup','初始化调用'],['setup','select','生命周期'],['select','context','类型选择']]},
-{id:'forward',name:'MoE Forward',en:'EXECUTION FLOW',desc:'分阶段执行的逻辑主线。共享专家的事件重叠与融合由具体配置决定。',ids:['runner','routed','router','shared','comm','mlp','finalize','return'],edges:[['runner','routed','调用入口'],['routed','router','Top-K'],['router','comm','执行委派'],['runner','shared','条件分支'],['comm','mlp','直接调用'],['mlp','finalize','回收恢复'],['shared','return','结果合并'],['finalize','return','输出钩子']]},
-{id:'comm',name:'通信后端',en:'COMMUNICATION',desc:'选择阅读路径，比较 AllGather、All-to-All、MC2 与融合实现。这里不模拟硬件运行时策略。',ids:['select','prepare','alltoall','mlp','combine','finalize'],edges:[['select','prepare','策略组合'],['prepare','alltoall','分发输入'],['alltoall','mlp','分组计算'],['mlp','combine','专家输出'],['combine','finalize','恢复布局']]},
-{id:'sp',name:'SP 与 Token 布局',en:'TOKEN OWNERSHIP',desc:'分片发生在模型包装层；上下文记录来源边界，EP collective 再完成收集与恢复。',ids:['sp-shard','sp-meta','sp-collective','comm','finalize'],edges:[['sp-shard','sp-meta','布局元数据'],['sp-meta','sp-collective','边界信息'],['sp-collective','comm','专家计算'],['comm','finalize','结果恢复']]},
-{id:'eplb',name:'EPLB 负载均衡',en:'LOAD BALANCING',desc:'控制、统计、异步迁移与映射提交的生命周期。权重搬运不同于 Forward 的 Token 通信。',ids:['control','load','rebalance','async','lookup','router'],edges:[['control','load','采样配置'],['load','rebalance','统计依赖'],['rebalance','async','迁移事务'],['async','lookup','安全提交后'],['lookup','router','物理映射']]},
-{id:'offload',name:'专家 Offload',en:'EXPERT RESIDENCY',desc:'独立的单 worker 路径。本快照不支持与 EP/EPLB 同时开启，仅支持特定 MXFP 格式。',ids:['offload-check','router','residency','offload-exec'],edges:[['offload-check','router','校验通过'],['router','residency','逻辑专家集合'],['residency','offload-exec','就绪权重与槽位']]}
-];
-export const manifest={id:'ep',name:'Expert Parallelism',label:'EP 专家并行',version:'MRv2 · 阅读快照',coverage:'人工核验的核心路径；非穷尽静态调用图，未在 NPU 执行。',versions};
-
-
-const commScene=scenes.find(s=>s.id==='comm');
-commScene.variants={ALLTOALL:{label:'All-to-All',ids:commScene.ids,edges:commScene.edges}};
-for(const [key,id] of Object.entries({ALLGATHER:'allgather',MC2:'mc2',FUSED_MC2:'fused'}))commScene.variants[key]={label:key==='ALLGATHER'?'AllGather':key,ids:['select',id,'mlp','finalize'],edges:[['select',id,'后端选择'],[id,'mlp',key==='FUSED_MC2'?'融合执行概念':'计算阶段'],['mlp','finalize','结果恢复']]};
-commScene.variants.FUSED_MC2={label:'FUSED_MC2',ids:['select','fused','finalize'],edges:[['select','fused','后端选择'],['fused','finalize','融合结果恢复']]};
+nodes.push(
+n('groups','建立 EP 通信组','vllm','vllm/distributed/parallel_state.py','    global _EP','initialize_model_parallel','固定 PP 坐标，将 DP、PCP、TP 维组合成该阶段的 EP 组。组存在不代表专家切分开关已经生效。','进程拓扑、并行配置','组成员与组内 EP rank'),
+n('registration','Ascend 接入上游接口','ascend','vllm_ascend/utils.py','        "MoERunner": AscendMoERunner,','register_ascend_customop','OOT 注册将上游 MoERunner / RoutedExperts 接口解析为 Ascend 类；工厂 patch 适配 Router 与 EPLB。','上游可插拔接口','Ascend 实现类'),
+n('placement','计算专家归属与 expert_map','vllm',v+'expert_map_manager.py','def determine_expert_map(','determine_expert_map','将物理专家 ID 映射为本地槽位；非本地专家标为 -1。线性部署可按连续范围理解。','EP rank / size、物理专家数','local_num_experts、expert_map'),
+n('weights','将 checkpoint 写入本地专家','vllm',v+'routed_experts.py','expert_id = self._map_global_expert_id_to_local_expert_id(global_expert_id)','RoutedExperts.weight_loader','把全局物理专家 ID 转成本地索引，跳过非本地权重，再按 w1/w2/w3、量化格式与分片规则写入。','checkpoint 权重、专家与 shard ID','本地参数存储'),
+n('quant','量化方法委派执行','ascend',a+'routed_experts.py','        moe_comm_method = _EXTRA_CTX.moe_comm_method','AscendUnquantizedFusedMoEMethod.apply','以未量化实现为示例：把权重与量化契约交给本批 MoECommMethod.fused_experts。其他量化类需沿各自 apply 阅读。','X、Top-K、权重','FusedExpertsResult'),
+n('output','合并共享贡献与必要归约','ascend',a+'fused_moe.py','        # Apply output transform (e.g. latent -> full dim)','AscendMoERunner.forward','完成输出变换、shared+routed 合并和最终条件归约；已经归约的输出不能重复求和。','shared_output、fused_output、归约标志','该 MoE 层输出'),
+n('mapping','EPLB：选择同一专家的物理副本','ascend','vllm_ascend/patch/platform/patch_fused_moe.py','def _ascend_apply_eplb_mapping(','_ascend_apply_eplb_mapping','Router 映射钩子读取当前副本表；已返回物理 ID 的 Top-K 路径跳过重复映射。','逻辑 Top-K ID、当前副本表','物理 Top-K ID'),
+n('ag-dispatch','按本卡专家重排输入','ascend',a+'token_dispatcher.py','    def token_dispatch(','TokenDispatcherWithAllGather.token_dispatch','从聚合后的输入中组织本卡专家任务，并生成分组计数和恢复元数据。','聚合 Token 与路由','本地专家分组输入'),
+n('ag-combine','还原本卡的 Token 贡献','ascend',a+'token_dispatcher.py','    def token_combine(self, hidden_states, combine_metadata, bias=None):','TokenDispatcherWithAllGather.token_combine','撤销专家排列，合成本卡对每个 Token 的贡献；跨 rank 的归约属于后续 finalize。','本地专家输出','本卡 Token 贡献'),
+n('mc2-dispatch','MC2 设备分发','ascend',a+'token_dispatcher.py','    def token_dispatch(','TokenDispatcherWithMC2.token_dispatch','使用设备 MoE 通信算子，返回本地专家输入、任务分组与回程元数据。','本地路由任务','本卡专家任务'),
+n('mc2-combine','MC2 设备回程','ascend',a+'token_dispatcher.py','    def token_combine(self, hidden_states, combine_metadata, bias=None):','TokenDispatcherWithMC2.token_combine','使用与分发配对的设备回程算子，将专家贡献归还来源 Token。','专家输出、MC2 元数据','来源 Token 的输出'),
+n('step','推进采样窗口与异步状态','ascend','vllm_ascend/distributed/eplb/eplb_state.py','    def step(','AscendEplbState.step','Ascend 维护采样时间轴和有效性，再调用上游 step 推进周期与异步结果检查。','本次有效负载 / dummy / profile','负载窗口与状态推进'),
+n('policy','规划副本数、放置与来源','ascend','vllm_ascend/distributed/eplb/policy/factory.py','def create_eplb_policy(','create_eplb_policy','选择 default 或 stair；STAIR 使用时间窗风险、搜索预算和迁移约束产生新布局与来源计划。','逻辑专家负载、旧布局、预算','目标 placement 与迁移来源'),
+n('transfer','搬运实际专家权重','ascend','vllm_ascend/distributed/eplb/explicit_transfer.py','def stage_explicit_layer_transfer(','stage_explicit_layer_transfer','按计划的 source rank/slot 搬运真实量化权重视图；HIXL / Gloo 是迁移数据通道。','目标布局与来源、权重视图','待提交层的接收工作区'),
+n('commit','前台安装权重并安全发布','ascend','vllm_ascend/patch/platform/patch_eplb.py','    def _move_to_workspace(*args, **kwargs):','_wrap_move_to_workspace._move_to_workspace','待结果就绪后安装层权重与映射，刷新设备路由表，最后确认结果已消费，允许复用接收工作区。','后台就绪结果','新布局生效与消费确认')
+);
+const get=id=>nodes.find(n=>n.id===id);
+Object.assign(get('context'),{symbol:'NPUPlatform.set_additional_forward_context',summary:'MRv2 每批建立额外上下文：使用 DP 最大 Token 数统一选通信枚举；每层再按配置匹配实现对象。'});
+Object.assign(get('router'),{anchor:'    def _select_experts(',symbol:'AscendRoutedExperts._select_experts'});
+get('prepare').title='Prepare：准备通信输入';
+get('load').summary='根据后端选择算子计数或 AllGather 有效来源掩码重计数，再按采样资格记录本地物理专家负载。';
+get('rebalance').note='AscendEplbState.rearrange 的 STAIR 异步自定义统计分支可直接发布数据，不必逐次调用上游 rearrange；上游仍拥有通用状态机。';
+get('ag-dispatch').within='TokenDispatcherWithAllGather';get('ag-combine').within='TokenDispatcherWithAllGather';
+get('mc2-dispatch').within='TokenDispatcherWithMC2';get('mc2-combine').within='TokenDispatcherWithMC2';
+get('combine').within='TokenDispatcherWithAll2AllV';
+get('alltoall').anchor='    def token_dispatch(';get('alltoall').within='TokenDispatcherWithAll2AllV';
+get('shared').occurrence='last';
+get('registration').additional=[{file:'vllm_ascend/patch/platform/patch_fused_moe.py',anchor:'def _ascend_FusedMoE(',symbol:'_ascend_FusedMoE'}];
+get('rebalance').additional=[{repo:'ascend',file:'vllm_ascend/distributed/eplb/eplb_state.py',anchor:'    def rearrange(',symbol:'AscendEplbState.rearrange',lines:36}];
+get('policy').additional=[{file:'vllm_ascend/distributed/eplb/policy/stair.py',anchor:'    def expert_risk(',symbol:'StairEplbPolicy.expert_risk'}];
+get('mapping').additional=[{file:a+'eplb.py',anchor:'def map_to_physical(',symbol:'map_to_physical',lines:50}];
+get('commit').lines=75;get('output').lines=16;get('placement').lines=94;
+get('groups').anchor='    assert _EP is None, "expert parallel group is already initialized"';
+Object.assign(get('prepare'),{anchor:'    def prepare(',within:'PrepareAndFinalizeWithAll2All',symbol:'PrepareAndFinalizeWithAll2All.prepare',lines:60});
+Object.assign(get('allgather'),{anchor:'    def prepare(',within:'PrepareAndFinalizeWithAllGather',symbol:'PrepareAndFinalizeWithAllGather.prepare',lines:48});
+get('allgather').additional=[{file:a+'prepare_finalize.py',anchor:'    def finalize(',within:'PrepareAndFinalizeWithAllGather',symbol:'PrepareAndFinalizeWithAllGather.finalize',lines:65}];
+get('control').additional=[{file:'vllm_ascend/worker/v2/eplb.py',anchor:'    def prepare_forward(',symbol:'AscendEPLBController.prepare_forward',lines:36}];
+get('fused').additional=[{file:a+'moe_comm_method.py',anchor:'    def fused_experts(',within:'FusedMC2CommImpl',symbol:'FusedMC2CommImpl.fused_experts',lines:45}];
+get('offload-check').lines=85;
+Object.assign(get('rebalance'),{title:'汇总需求并请求重排',repo:'ascend',file:'vllm_ascend/distributed/eplb/eplb_state.py',symbol:'AscendEplbState.rearrange',lines:36,summary:'Ascend 自定义异步统计路径收集并发布逻辑需求；其他条件委托上游 rearrange，不能画成每次必经的上游嵌套调用。'});
+get('rebalance').additional=[{repo:'vllm',file:'vllm/distributed/eplb/eplb_state.py',anchor:'    def rearrange(',symbol:'EplbState.rearrange'}];
+get('async').title='异步重排与搬运';
+get('async').additional=[{repo:'ascend',file:'vllm_ascend/patch/platform/patch_eplb.py',anchor:'def _wrap_async_worker(',symbol:'_wrap_async_worker._run',lines:76}];
+Object.assign(get('router'),{anchor:'        topk_weights, topk_ids = self.router._select_experts(',lines:6});
+get('routed').additional=[{file:a+'routed_experts.py',anchor:'        eplb_state = self.router.eplb_state',symbol:'AscendRoutedExperts.forward_impl · MRv2 load recording',lines:27}];
+get('load').lines=74;
+Object.assign(get('policy'),{file:'vllm_ascend/distributed/eplb/policy/stair.py',anchor:'    def plan_sharded_rebalance(',symbol:'StairEplbPolicy.plan_sharded_rebalance',within:'StairEplbPolicy',lines:46});
+get('policy').additional=[{file:'vllm_ascend/distributed/eplb/policy/factory.py',anchor:'def create_eplb_policy(',symbol:'create_eplb_policy'},{file:'vllm_ascend/distributed/eplb/policy/stair.py',anchor:'    def expert_risk(',symbol:'StairEplbPolicy.expert_risk'}];
+export {scenes} from './views.mjs';
+export const manifest={id:'ep',name:'Expert Parallelism',label:'EP 专家并行',version:'MRv2 · 阅读快照',coverage:'固定源码的核心路径；非穷尽动态调用图，未在 NPU 执行。',versions};
+manifest.audit={
+ intro:'当前图保留原有固定 SHA，以实际源码为准核对课程与 Notebook。课程是参考资料，版本不同的接口不直接搬用。',
+ comparison:[{label:'课程 vLLM',sha:'05caae03c20f69436ff7ec23ded339ea104f1a01'},{label:'课程 Ascend',sha:'6e3299ab492ddbadb4c8e3a00b88c982c9a28131'}],
+ conclusion:'已纠正：生命周期连成单线、遗漏 shared/最终归约、SP 后端边界、EPLB 前台提交以及版本接口差异。覆盖核心路径，尚未穷举所有模型与量化后端。两份本站 SHA 是阅读快照，未验证为兼容安装组合；未执行 NPU 推理。',
+ report:'https://github.com/ZYY-ing/feature-atlas/blob/main/docs/mrv2-audit.md',
+ reference:'https://eplb-mrv2-course-6d92.sharpcairn1.chatgpt.site/topics'
+};
