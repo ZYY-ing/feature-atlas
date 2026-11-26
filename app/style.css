@@ -34,3 +34,9 @@ body.dark{color-scheme:dark;--bg:#141d2c;--panel:#1a2638;--ink:#e0e8f5;--muted:#
 }
 @media(min-width:861px) and (max-width:1120px){.workspace{--default-inspector-width:390px}}
 @media(min-width:1600px){.workspace{--default-inspector-width:490px}}
+.example>p+p,.example-table-wrap+p{margin-top:15px}
+.example-table-wrap{margin:16px 0;overflow-x:auto}
+.example-table{width:100%;border-collapse:collapse;font-size:14px;line-height:1.65;background:var(--panel)}
+.example-table caption{text-align:left;font-size:13px;font-weight:600;color:var(--blue);margin-bottom:7px}
+.example-table th,.example-table td{border:1px solid var(--line);padding:8px 9px;text-align:left;vertical-align:top;overflow-wrap:anywhere}
+.example-table th{font-weight:600;background:var(--bg)}

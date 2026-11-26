@@ -63,3 +63,14 @@ Object.assign(lessons,{
 });
 sceneLessons.routed=lessons.routed;
 lessons.runner=L('Runner 是模型调用 MoE 时的编排入口。Ascend 覆盖 forward，将具体专家执行交给 _forward_entry，再按模型契约恢复与合并输出；若调用的辅助方法未覆盖，就继续执行上游继承实现。',['处理 routed/shared 输入变换与执行维度 padding。','经 _forward_entry 进入 _forward_impl，协调路由专家与可选共享专家。','恢复维度，处理 routed 缩放/输出变换、shared 合并与必要归约。'],'Runner(X, logits) → MoE layer output Y','a 的路由贡献来自 E1/E5，共享贡献来自 S。Runner 负责让这些贡献处于匹配的布局和归约状态后汇合，不自己实现跨卡 Token 发送。',['主入口看 AscendMoERunner.forward。','展开 routed 节点读专家内部；output 节点读回到 Runner 后的处理。'],'不是先完整执行 super().forward，再执行 Ascend forward；该快照覆盖了 forward。');
+lessons.groups.example='假设一张卡运行一个进程，采用 DP2、PP2、TP2、PCP1，并按本快照的普通静态拓扑编号。共使用 2 × 2 × 2 × 1 = 8 张卡，global rank 为 0、1、2、3、4、5、6、7。';
+lessons.groups.exampleDetails=[
+ {type:'paragraph',text:'先按 DP、PP 坐标展开。每个格子里的两个 global rank 对应 TP 的两个成员；PCP=1 在这里不增加分片。'},
+ {type:'table',caption:'8 张卡的 DP / PP 分布',headers:['DP 坐标','PP stage 0','PP stage 1'],rows:[['DP 0','global rank 0、1','global rank 2、3'],['DP 1','global rank 4、5','global rank 6、7']]},
+ {type:'paragraph',text:'PP stage 0 和 stage 1 负责不同的模型层。建立这一层的 EP 组时，固定 PP stage，再将该阶段内 DP、TP 方向的进程组合起来。因此每个 EP 组有 DP2 × TP2 × PCP1 = 4 个成员：'},
+ {type:'table',caption:'对应的两个 EP 组',headers:['所在 PP 阶段','EP 组成员（global rank）'],rows:[['PP stage 0','[0, 1, 4, 5]'],['PP stage 1','[2, 3, 6, 7]']]},
+ {type:'paragraph',text:'global rank 是全局编号；EP rank 是当前 EP 组成员列表中的位置，从 0 开始重新编号。以第一个 EP 组 [0, 1, 4, 5] 为例：'},
+ {type:'table',caption:'同一个进程的两套编号',headers:['global rank','EP rank（组内索引）'],rows:[['0','0'],['1','1'],['4','2'],['5','3']]},
+ {type:'paragraph',text:'global rank 4 是这个 EP 组的第 3 个成员，所以它的 EP rank 是 2。它始终是同一张卡 / 同一个进程，只是在全局和组内使用不同编号。这里的 EP rank 2 也不是专家编号 E2。'},
+ {type:'paragraph',text:'这些成员列表来自本示例的编号顺序；其他部署应查看实际通信组的 ranks 与 rank_in_group，不能仅凭 global rank 数字猜组内编号。'}
+];
