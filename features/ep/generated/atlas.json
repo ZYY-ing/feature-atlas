@@ -1,0 +1,1123 @@
+{
+  "manifest": {
+    "id": "ep",
+    "name": "Expert Parallelism",
+    "label": "EP 专家并行",
+    "version": "MRv2 · 阅读快照",
+    "coverage": "人工核验的核心路径；非穷尽静态调用图，未在 NPU 执行。",
+    "versions": {
+      "vllm": {
+        "repo": "vllm-project/vllm",
+        "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8"
+      },
+      "ascend": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42"
+      }
+    }
+  },
+  "nodes": [
+    {
+      "id": "factory",
+      "title": "构建 MoE 执行管线",
+      "repo": "vllm",
+      "file": "vllm/model_executor/layers/fused_moe/layer.py",
+      "anchor": "runner = runner_cls(",
+      "symbol": "FusedMoEFactory",
+      "summary": "上游工厂创建 Router、RoutedExperts 和 MoERunner。OOT 可插拔分发让 NPU 接口落到 Ascend 实现。",
+      "input": "模型与并行配置",
+      "output": "MoERunner 实例",
+      "note": "本图未展开插件启动注册全过程。覆盖关系与直接函数调用分开标记。",
+      "evidence": {
+        "repo": "vllm-project/vllm",
+        "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+        "file": "vllm/model_executor/layers/fused_moe/layer.py",
+        "symbol": "FusedMoEFactory",
+        "start": 468,
+        "end": 493,
+        "code": "        runner_cls = MoERunner\n\n    runner = runner_cls(\n        layer_name=layer_name,\n        moe_config=moe_config,\n        router=router,\n        routed_experts=routed_experts,\n        enable_dbo=vllm_config.parallel_config.enable_dbo,\n        gate=gate,\n        shared_expert_gate=shared_expert_gate,\n        shared_experts=shared_experts,\n        routed_input_transform=routed_input_transform,\n        routed_output_transform=routed_output_transform,\n        # When the runner applies the scale, pass the scaling factor to it;\n        # otherwise pass 1.0 so it ends up being a nop.\n        routed_scaling_factor=routed_scaling_factor\n        if routed_scale_mode.scales_output\n        else 1.0,\n        routed_scale_mode=routed_scale_mode,\n        **runner_args if runner_args is not None else {},\n    )\n\n    return runner\n\n\ndef fused_moe_make_expert_params_mapping(",
+        "hash": "2f16dd89df2d97dbcf4404df764d1d872651ef4a282d85caf7cfb3486084f2ea",
+        "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L468-L493"
+      }
+    },
+    {
+      "id": "runner",
+      "title": "Ascend MoE Runner",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/fused_moe.py",
+      "anchor": "result = self._forward_entry(",
+      "symbol": "AscendMoERunner.forward",
+      "summary": "组织输入变换、执行入口、共享与路由结果合并。该快照覆盖了上游 forward，而不是简单调用 super().forward。",
+      "input": "hidden_states、router_logits",
+      "output": "该层 MoE 输出",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/fused_moe.py",
+        "symbol": "AscendMoERunner.forward",
+        "start": 224,
+        "end": 249,
+        "code": "        )\n\n        result = self._forward_entry(\n            hidden_states,\n            router_logits,\n            shared_experts_input,\n            input_ids,\n            self._encode_layer_name(),\n            self.moe_config.hidden_dim_unpadded if self._quant_method.has_unpadded_output else 0,\n        )\n\n        #\n        # Note: there are two all-reduce points below. They are mutually\n        # exclusive, controlled by _fused_output_is_reduced\n        #  - When True: the combine kernel already reduced fused_output,\n        #    so we reduce shared_output here to match, then skip the\n        #    all-reduce in _maybe_reduce_final_output.\n        #  - When False: neither output is reduced yet, so we combine\n        #    them first and all-reduce the sum in _maybe_reduce_final_output.\n\n        # Extract outputs from result\n        shared_output, fused_output = _unpack(result)\n\n        if self._megamoe_shared_expert_fused:\n            # MegaMoe already combined the shared contribution into\n            # fused_output, and the forward_impl returned shared_out=None.",
+        "hash": "d3271173d139e386531db39691e7e00e8cb10a56cfe0755f03484f443d5b1def",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/fused_moe.py#L224-L249"
+      }
+    },
+    {
+      "id": "transform",
+      "title": "继承上游输入变换",
+      "repo": "vllm",
+      "file": "vllm/model_executor/layers/fused_moe/runner/moe_runner.py",
+      "anchor": "def apply_routed_input_transform(",
+      "symbol": "MoERunner.apply_routed_input_transform",
+      "summary": "Ascend Runner 使用继承的方法准备 routed/shared 输入，表明跨仓库关系不只是单向调用。",
+      "input": "原始 hidden_states",
+      "output": "routed 与 shared 输入",
+      "note": "这是继承方法调用；并非先执行一遍完整的上游 MoE。",
+      "evidence": {
+        "repo": "vllm-project/vllm",
+        "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+        "file": "vllm/model_executor/layers/fused_moe/runner/moe_runner.py",
+        "symbol": "MoERunner.apply_routed_input_transform",
+        "start": 377,
+        "end": 402,
+        "code": "        return self.routed_experts.quant_method\n\n    def apply_routed_input_transform(\n        self,\n        hidden_states: torch.Tensor,\n    ) -> tuple[torch.Tensor, torch.Tensor | None]:\n        \"\"\"Apply transform for routed experts (e.g., latent projection).\n\n        This is called by MoERunner.forward_native. The original hidden_states\n        is saved separately so shared experts get [S, hidden_size] while\n        routed experts get the transformed [S, moe_latent_size].\n\n        Returns (possibly transformed) hidden states and the input for shared\n        experts (or None if there are no shared experts).\n        \"\"\"\n        if self.routed_input_transform is not None:\n            result = self.routed_input_transform(hidden_states)\n            # ReplicatedLinear returns (output, extra_bias) tuple.\n            # We only need the output tensor; extra_bias is not used here.\n            if isinstance(result, tuple):\n                return result[0], hidden_states\n            return result, hidden_states\n\n        return (\n            hidden_states,\n            hidden_states if self._shared_experts is not None else None,",
+        "hash": "9422dec7484c2bad623a790ae6f554dcbf6677fb47b4483edf058701767262c8",
+        "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/runner/moe_runner.py#L377-L402"
+      }
+    },
+    {
+      "id": "routed",
+      "title": "路由专家执行入口",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/routed_experts.py",
+      "anchor": "prepare_output = moe_comm_method.prepare(",
+      "symbol": "AscendRoutedExperts.forward_impl",
+      "summary": "取得本层通信实例，prepare 输入，选专家后调用量化实现，并在结束时记录负载与恢复布局。",
+      "input": "本地 Token 特征、logits",
+      "output": "routed_out 与执行事件",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/routed_experts.py",
+        "symbol": "AscendRoutedExperts.forward_impl",
+        "start": 615,
+        "end": 640,
+        "code": "\n        num_source_tokens = hidden_states.shape[0]\n        prepare_output = moe_comm_method.prepare(\n            hidden_states=hidden_states,\n            router_logits=router_logits,\n            # The SP model wrapper already shards and gathers the MoE sequence.\n            replace_allreduce=self.moe_config.is_sequence_parallel,\n            quant_type=self.quant_type,\n        )\n        hidden_states = prepare_output.hidden_states\n        router_logits = prepare_output.router_logits\n        mc2_mask = prepare_output.mc2_mask\n        padded_hidden_states_shape = prepare_output.padded_hidden_states_shape\n        pertoken_scale = prepare_output.pertoken_scale\n        if self.router is None:\n            raise RuntimeError(\"AscendRoutedExperts requires a router for expert selection.\")\n        topk_weights, topk_ids = self._select_experts(\n            hidden_states=hidden_states,\n            router_logits=router_logits,\n            enable_force_load_balance=enable_force_load_balance,\n            input_ids=input_ids,\n        )\n        self.ascend_pertoken_scale = pertoken_scale\n        self.ascend_mc2_mask = mc2_mask\n        try:\n            fused_experts_results: FusedExpertsResult = self.quant_method.apply(",
+        "hash": "293bb83bdd6850cda57c1e714c55269a0850740bb6947bbebdbd0e11782b7e1d",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/routed_experts.py#L615-L640"
+      }
+    },
+    {
+      "id": "router",
+      "title": "Router / Top-K",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/routed_experts.py",
+      "anchor": "topk_weights, topk_ids = self._select_experts(",
+      "symbol": "AscendRoutedExperts.forward_impl",
+      "summary": "依据模型规则选择逻辑专家和权重。EPLB 路径通过适配映射到物理专家。",
+      "input": "[T,H]、[T,E]",
+      "output": "权重与专家 ID：[T,k]",
+      "note": "物理映射不能将逻辑专家替换为另一个专家。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/routed_experts.py",
+        "symbol": "AscendRoutedExperts.forward_impl",
+        "start": 629,
+        "end": 654,
+        "code": "        if self.router is None:\n            raise RuntimeError(\"AscendRoutedExperts requires a router for expert selection.\")\n        topk_weights, topk_ids = self._select_experts(\n            hidden_states=hidden_states,\n            router_logits=router_logits,\n            enable_force_load_balance=enable_force_load_balance,\n            input_ids=input_ids,\n        )\n        self.ascend_pertoken_scale = pertoken_scale\n        self.ascend_mc2_mask = mc2_mask\n        try:\n            fused_experts_results: FusedExpertsResult = self.quant_method.apply(\n                layer=self,\n                x=hidden_states,\n                topk_weights=topk_weights,\n                topk_ids=topk_ids,\n                shared_experts=None,\n                shared_experts_input=None,\n            )\n        finally:\n            self.ascend_pertoken_scale = None\n            self.ascend_mc2_mask = None\n\n        eplb_state = self.router.eplb_state\n        if eplb_state is not None:\n            # eplb_state imports vllm_ascend.ops.fused_moe at module scope, so a",
+        "hash": "bc140acb493773c9aaf3e412953bedd495920bfc1d630315fac70a6cb5743d46",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/routed_experts.py#L629-L654"
+      }
+    },
+    {
+      "id": "comm",
+      "title": "专家执行策略",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+      "anchor": "token_dispatch_output = self.token_dispatcher.token_dispatch(",
+      "symbol": "MoECommMethod.fused_experts",
+      "summary": "分阶段后端在这里串联 Dispatch、专家 MLP、Combine，并返回专家任务计数。",
+      "input": "专家 ID、权重、Token 特征",
+      "output": "专家输出与计数",
+      "note": "FUSED_MC2 可覆盖该方法，将多个阶段下沉到融合算子。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+        "symbol": "MoECommMethod.fused_experts",
+        "start": 152,
+        "end": 177,
+        "code": "            fused_experts_input=fused_experts_input,\n        )\n        token_dispatch_output = self.token_dispatcher.token_dispatch(token_dispatch_input=token_dispatch_input)\n\n        mlp_compute_input = build_mlp_compute_input(\n            fused_experts_input=fused_experts_input,\n            token_dispatch_output=token_dispatch_output,\n            moe_config=self.moe_config,\n        )\n        if quant_method is None:\n            # Legacy path (310P): the comm method overrides ``_apply_mlp`` with\n            # its own MLP implementation.\n            mlp_output, before_gmm2_evt = self._apply_mlp(mlp_compute_input)\n        else:\n            mlp_output, before_gmm2_evt = apply_moe_mlp(mlp_compute_input, quant_method)\n\n        before_combine_evt = maybe_record_event()\n        routed_out = self.token_dispatcher.token_combine(\n            hidden_states=mlp_output,\n            combine_metadata=token_dispatch_output.combine_metadata,\n        )\n\n        return FusedExpertsResult(\n            routed_out=routed_out,\n            before_dispatch_evt=before_dispatch_evt,\n            before_gmm2_evt=before_gmm2_evt,",
+        "hash": "2400903c12e0435524611316b8f68d5d26f127831261dffe2bf6ed56458c76ea",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/moe_comm_method.py#L152-L177"
+      }
+    },
+    {
+      "id": "mlp",
+      "title": "Grouped MLP",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/moe_mlp.py",
+      "anchor": "if quant_method.supports_fused_activation(",
+      "symbol": "apply_moe_mlp",
+      "summary": "根据量化方法执行 GMM1、激活/量化和 GMM2。融合激活是条件分支，不能再重复执行普通激活。",
+      "input": "分组后的专家输入",
+      "output": "专家计算结果",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/moe_mlp.py",
+        "symbol": "apply_moe_mlp",
+        "start": 68,
+        "end": 93,
+        "code": "            )\n\n    if quant_method.supports_fused_activation(mlp_compute_input.activation):\n        hidden_states, act_out_scale = quant_method.apply_gmm1_act_quant(mlp_compute_input)\n    else:\n        hidden_states = quant_method.apply_gmm1(mlp_compute_input)\n        hidden_states = _unified_apply_activation(mlp_compute_input, hidden_states, quant_method)\n        hidden_states, act_out_scale = quant_method.apply_act_quant(mlp_compute_input, hidden_states)\n\n    before_gmm2_evt = maybe_record_event()\n    hidden_states = quant_method.apply_gmm2(mlp_compute_input, hidden_states, act_out_scale)\n    return hidden_states, before_gmm2_evt\n\n\ndef _unified_apply_activation(\n    mlp_compute_input: MoEMlpComputeInput, hidden_states: torch.Tensor, quant_method\n) -> torch.Tensor:\n    activation = mlp_compute_input.activation\n\n    if activation == MoEActivation.SITU:\n        hidden_states = _apply_situ(\n            hidden_states,\n            beta=1.0 if mlp_compute_input.activation_situ_beta is None else mlp_compute_input.activation_situ_beta,\n            linear_beta=mlp_compute_input.activation_situ_linear_beta,\n        )\n    elif activation == MoEActivation.SWIGLUOAI:",
+        "hash": "077777be71d6efd70fb3fe4559e205f67b9b8bf1589d3b178b5432234294b23f",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/moe_mlp.py#L68-L93"
+      }
+    },
+    {
+      "id": "finalize",
+      "title": "恢复 Token 布局",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/routed_experts.py",
+      "anchor": "routed_out = _EXTRA_CTX.moe_comm_method.finalize(",
+      "symbol": "AscendRoutedExperts.forward_impl",
+      "summary": "通信策略根据元数据恢复输出，是否归约依后端决定。",
+      "input": "专家返回结果与 padding 信息",
+      "output": "按原布局组织的 routed_out",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/routed_experts.py",
+        "symbol": "AscendRoutedExperts.forward_impl",
+        "start": 693,
+        "end": 714,
+        "code": "\n        assert _EXTRA_CTX.moe_comm_method is not None\n        routed_out = _EXTRA_CTX.moe_comm_method.finalize(\n            hidden_states=fused_experts_results.routed_out,\n            reduce_results=isinstance(_EXTRA_CTX.moe_comm_method, AllGatherCommImpl),\n            padded_hidden_states_shape=padded_hidden_states_shape,\n        )\n\n        # Clear per-forward LoRA state from long-lived singletons.\n        if lora_context is not None:\n            sync_lora_context(self.quant_method, None)\n\n        if self.return_with_event:\n            return routed_out, RoutedMoEMilestones(\n                routed_dispatch_start=fused_experts_results.before_dispatch_evt,\n                shared_activation_overlap_start=fused_experts_results.shared_activation_overlap_start_evt,\n                routed_combine_start=fused_experts_results.before_combine_evt,\n            )\n\n        # The vLLM FusedMoE forward_impl does not return events.\n        return routed_out\n",
+        "hash": "9f10ad34f378db527392e5f1d3db825fe990b0e0cb544b1fae41809004315b2e",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/routed_experts.py#L693-L714"
+      }
+    },
+    {
+      "id": "shared",
+      "title": "共享专家分支",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/fused_moe.py",
+      "anchor": "if self._megamoe_shared_expert_fused:",
+      "symbol": "AscendMoERunner._forward_impl",
+      "summary": "共享分支可按事件与路由分支重叠。MegaMoE 若已融合共享计算，跳过独立分支。",
+      "input": "shared_experts_input",
+      "output": "shared_out 或已融合结果",
+      "note": "这是并行/条件分支，不表示所有后端都有单独的共享 kernel。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/fused_moe.py",
+        "symbol": "AscendMoERunner._forward_impl",
+        "start": 599,
+        "end": 621,
+        "code": "                milestones.routed_finalize_done = torch.npu.current_stream().record_event()\n\n            if self._megamoe_shared_expert_fused:\n                # The shared expert GMM1 + activation + GMM2 runs inside the\n                # MegaMoe operator on the routed stream, so its contribution\n                # is already contained in routed_out. Skip the standalone\n                # forward to avoid computing it twice.\n                shared_out = None\n            elif submitted_gate_up is None:\n                shared_out = self.ascend_shared_experts.forward(\n                    prepared_shared_input,\n                    milestones,\n                    defer_output_wait=defer_shared_output_wait,\n                )\n            else:\n                shared_out = self.ascend_shared_experts.forward(\n                    prepared_shared_input,\n                    milestones,\n                    defer_output_wait=defer_shared_output_wait,\n                    submitted_gate_up=submitted_gate_up,\n                )\n            return shared_out, routed_out\n",
+        "hash": "681e64449d7b25314bbf770bf13b5aab5118a6bae049e51f16cd44602628b070",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/fused_moe.py#L599-L621"
+      }
+    },
+    {
+      "id": "return",
+      "title": "上游输出补充钩子",
+      "repo": "vllm",
+      "file": "vllm/model_executor/layers/fused_moe/runner/moe_runner.py",
+      "anchor": "def _maybe_add_zero_expert_output(",
+      "symbol": "MoERunner._maybe_add_zero_expert_output",
+      "summary": "Ascend forward 结束时调用继承的上游钩子；仅 ZeroExpertRouter 等适用路径增加对应贡献。",
+      "input": "合并并归约后的结果",
+      "output": "返回模型的输出",
+      "note": "一般模型可能为无操作。上游方法的模块归属不代表执行发生在另一个进程。",
+      "evidence": {
+        "repo": "vllm-project/vllm",
+        "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+        "file": "vllm/model_executor/layers/fused_moe/runner/moe_runner.py",
+        "symbol": "MoERunner._maybe_add_zero_expert_output",
+        "start": 725,
+        "end": 750,
+        "code": "        )\n\n    def _maybe_add_zero_expert_output(\n        self,\n        result: torch.Tensor,\n    ) -> torch.Tensor:\n        \"\"\"Add the zero expert's contribution to the final result.\n\n        When a ZeroExpertRouter is used, it computes a bias-like output\n        from the \"zero expert\" that is added to the combined routed+shared\n        expert output.\n        \"\"\"\n        if isinstance(self.router, ZeroExpertRouter):\n            zero_expert_output = self.router.zero_expert_output\n            assert zero_expert_output is not None\n            result = result + zero_expert_output\n        return result\n\n    def forward(\n        self,\n        hidden_states: torch.Tensor,\n        router_logits: torch.Tensor,\n        input_ids: torch.Tensor | None = None,\n        shared_experts_input: torch.Tensor | None = None,\n    ) -> torch.Tensor:\n        \"\"\"Invoke the fused moe layer.",
+        "hash": "aee51585e2aec282d838918db8bff288151bc70b6d9dce1652baf2f7d3c675c5",
+        "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/runner/moe_runner.py#L725-L750"
+      }
+    },
+    {
+      "id": "setup",
+      "title": "注册通信实例",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+      "anchor": "def setup_moe_comm_method(",
+      "symbol": "setup_moe_comm_method",
+      "summary": "初始化时按 MoE 执行配置注册不同通信实现。EP=1 时仅注册 AllGather 路径。",
+      "input": "FusedMoEConfig",
+      "output": "可复用的后端实例",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+        "symbol": "setup_moe_comm_method",
+        "start": 66,
+        "end": 91,
+        "code": "\n\ndef setup_moe_comm_method(moe_config):\n    if moe_config.ep_size > 1:\n        _MoECommMethods[_moe_config_key(MoECommType.ALLTOALL, moe_config)] = AlltoAllCommImpl(moe_config)\n        _MoECommMethods[_moe_config_key(MoECommType.ALLGATHER, moe_config)] = AllGatherCommImpl(moe_config)\n        _MoECommMethods[_moe_config_key(MoECommType.MC2, moe_config)] = MC2CommImpl(moe_config)\n        _MoECommMethods[_moe_config_key(MoECommType.FUSED_MC2, moe_config)] = FusedMC2CommImpl(moe_config)\n    else:\n        _MoECommMethods[_moe_config_key(MoECommType.ALLGATHER, moe_config)] = AllGatherCommImpl(moe_config)\n\n\n@dataclass\nclass FusedExpertsResult:\n    routed_out: torch.Tensor\n    # This field is for shared experts and should be set by the MoE\n    # communication method that supports shared experts in parallel with routed\n    # experts.\n    before_dispatch_evt: torch.npu.Event | None = None\n    before_gmm2_evt: torch.npu.Event | None = None\n    before_combine_evt: torch.npu.Event | None = None\n    shared_activation_overlap_start_evt: torch.npu.Event | None = None\n    # For dynamic_eplb\n    group_list_type: int = 1\n    expert_tokens: torch.Tensor | None = None\n",
+        "hash": "03d0f4dcb8dd950df9c3452cb84362baf190129b90c3c5751b27b00120f3dce3",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/moe_comm_method.py#L66-L91"
+      }
+    },
+    {
+      "id": "select",
+      "title": "选择本批通信类型",
+      "repo": "ascend",
+      "file": "vllm_ascend/ascend_forward_context.py",
+      "anchor": "def select_moe_comm_method(",
+      "symbol": "select_moe_comm_method",
+      "summary": "结合硬件策略、EP、Token 数及 LoRA 等约束选枚举，函数不创建实现对象。",
+      "input": "批次 Token 数、配置",
+      "output": "MoECommType",
+      "note": "页面中的后端选择是阅读过滤器，不是一次真实 NPU 策略执行。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ascend_forward_context.py",
+        "symbol": "select_moe_comm_method",
+        "start": 411,
+        "end": 436,
+        "code": "\n\ndef select_moe_comm_method(\n    num_tokens: int,\n    vllm_config: VllmConfig,\n    is_draft_model: bool = False,\n    draft_moe_quant_type: QuantType = QuantType.NONE,\n) -> MoECommType | None:\n    \"\"\"Select the MoE communication method from the active hardware policy,\n    parallel settings, and token count.\n\n    Args:\n        num_tokens (int): The number of tokens in the current batch.\n        vllm_config (VllmConfig): Runtime configuration for the model.\n        is_draft_model (bool): Whether the model runs in MTP mode.\n        draft_moe_quant_type (QuantType): The draft model's MoE quantization\n            type, used on A5 to decide whether the draft can use mega moe.\n    Returns:\n        MoECommType | None: The selected MoE communication method.\n    \"\"\"\n    if not is_moe_model(vllm_config):\n        return None\n\n    mc2_tokens_capacity = get_mc2_tokens_capacity()\n    moe_comm_policy = get_current_hardware_profile().moe_comm_policy\n    lora_config = getattr(vllm_config, \"lora_config\", None)",
+        "hash": "de63a0f7d4d463b21979dd8ab08d326237b4128a15a3ddfcaef05f0a5fb278d1",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ascend_forward_context.py#L411-L436"
+      }
+    },
+    {
+      "id": "context",
+      "title": "建立 Forward Context",
+      "repo": "ascend",
+      "file": "vllm_ascend/platform.py",
+      "anchor": "moe_comm_method = get_moe_comm_method(moe_comm_type)",
+      "symbol": "NPUPlatform",
+      "summary": "上下文建立时取得类型对应对象，路由专家执行时再按本层 moe_config 取得匹配实例。",
+      "input": "本批次元信息",
+      "output": "forward context",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/platform.py",
+        "symbol": "NPUPlatform",
+        "start": 940,
+        "end": 965,
+        "code": "            vllm_config,\n        )\n        moe_comm_method = get_moe_comm_method(moe_comm_type)\n\n        mc2_mask = None\n        padded_num_tokens = None\n        if num_tokens is not None:\n            num_actual_tokens = num_tokens\n            # NOTE: token num which need to pad to when mc2\n            padded_num_tokens = math.ceil(max_tokens_across_dp / tp_world_size) * tp_world_size\n            reserved_mc2_mask = get_mc2_mask()\n            if reserved_mc2_mask is not None:\n                mc2_mask = reserved_mc2_mask[:padded_num_tokens]\n                mc2_mask[:num_actual_tokens] = True\n                mc2_mask[num_actual_tokens:] = False\n        return {\n            \"moe_comm_type\": moe_comm_type,\n            \"moe_comm_method\": moe_comm_method,\n            \"use_mega_moe\": use_cann_megamoe(vllm_config),\n            \"is_decode_only_node\": _is_decode_only_node(vllm_config),\n            \"capturing\": capturing,\n            \"mmrs_fusion\": mmrs_fusion,\n            \"num_tokens\": num_tokens,\n            \"padded_length\": padded_length,\n            \"max_tokens_across_dp\": max_tokens_across_dp,\n            \"max_tokens_across_pcp\": max_tokens_across_pcp,",
+        "hash": "cb640a1d1a770b72607c7c007723a9e50c8fcbf99db8657fd5a56e2b67c85b01",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/platform.py#L940-L965"
+      }
+    },
+    {
+      "id": "prepare",
+      "title": "准备通信输入",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/prepare_finalize.py",
+      "anchor": "class PrepareAndFinalizeWithAll2All(",
+      "symbol": "PrepareAndFinalizeWithAll2All",
+      "summary": "处理输入量化、padding、Token 分片与回程恢复；SP 场景避免重复拆分。",
+      "input": "本地 hidden_states",
+      "output": "通信需要的输入与恢复元数据",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/prepare_finalize.py",
+        "symbol": "PrepareAndFinalizeWithAll2All",
+        "start": 119,
+        "end": 144,
+        "code": "\n\nclass PrepareAndFinalizeWithAll2All(PrepareAndFinalize):\n    \"\"\"\n    MoE communication strategy using All-to-All style slicing.\n    Similar to MC2 but does not use mc2_mask; instead pads to TP size for uniform slicing.\n    Will be used when num_tokens exceed mc2's limitation (512 tokens/rank).\n    \"\"\"\n\n    def __init__(self, moe_config: FusedMoEConfig):\n        super().__init__(moe_config)\n        self._restore_tp_across_dp()\n\n    def _restore_tp_across_dp(self):\n        \"\"\"Restore original TP configuration (same as MC2).\"\"\"\n        self.tp_size = get_tensor_model_parallel_world_size()\n        self.tp_rank = get_tensor_model_parallel_rank()\n\n    def prepare(\n        self,\n        hidden_states: torch.Tensor,\n        router_logits: torch.Tensor,\n        replace_allreduce: bool = False,\n        quant_type=QuantType.NONE,\n    ) -> MoEPrepareOutput:\n        \"\"\"",
+        "hash": "54c44e826ebd307150be727cc6c2933ea693f5e59097870a02096c6781a2d55a",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/prepare_finalize.py#L119-L144"
+      }
+    },
+    {
+      "id": "alltoall",
+      "title": "All-to-All Dispatch",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/token_dispatcher.py",
+      "anchor": "class TokenDispatcherWithAll2AllV(",
+      "symbol": "TokenDispatcherWithAll2AllV",
+      "summary": "按目的 rank 分发 Token，保留恢复顺序所需元数据，目的卡仅接收其专家所需任务。",
+      "input": "本地 Top-K 任务",
+      "output": "接收的专家输入",
+      "note": "同一 Token 的多专家任务数不一定等于网络传输行数；实现可能合并或重排。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/token_dispatcher.py",
+        "symbol": "TokenDispatcherWithAll2AllV",
+        "start": 471,
+        "end": 496,
+        "code": "\n\nclass TokenDispatcherWithAll2AllV(MoETokenDispatcher[MoEAllToAllCombineMetadata]):\n    \"\"\"\n    The implementation of the AlltoAll-based token dispatcher, which handles token\n    dispatching on the sequence level instead of token level. The core of this implementation\n    lies in each device dispatching on the entire sequence, with the hidden state being partitioned.\n    \"\"\"\n\n    def __init__(self, **kwargs):\n        super().__init__(**kwargs)\n        self.num_local_experts = kwargs.get(\"num_local_experts\", 0)\n        self._input_splits_staging: torch.Tensor | None = None\n        self._output_splits_staging: torch.Tensor | None = None\n        self._splits_copy_done: torch.npu.Event | None = None\n\n        assert self.num_local_experts > 0, \"Expected at least one expert\"\n        if self.num_local_experts > 1:\n            self.expert_ids_per_ep_rank = torch.tensor(\n                [i % self.num_local_experts for i in range(self.num_experts)],\n                dtype=torch.int32,\n                device=torch.npu.current_device(),\n            )\n\n        local_expert_indices_offset = self.ep_rank * self.num_local_experts\n",
+        "hash": "d5ebfaf9f5e2fe43efbc7632da17a84d10e46766e7796a4a8c4368e326791856",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/token_dispatcher.py#L471-L496"
+      }
+    },
+    {
+      "id": "combine",
+      "title": "All-to-All Combine",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/token_dispatcher.py",
+      "anchor": "    def token_combine(self, hidden_states, combine_metadata, bias=None):",
+      "symbol": "TokenDispatcherWithAll2AllV.token_combine",
+      "summary": "专家输出根据 Dispatch 元数据送回来源卡并还原。此处是通信回程，不是训练反向传播。",
+      "input": "专家输出、combine_metadata",
+      "output": "来源卡的路由输出",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/token_dispatcher.py",
+        "symbol": "TokenDispatcherWithAll2AllV.token_combine",
+        "start": 618,
+        "end": 643,
+        "code": "        )\n\n    def token_combine(self, hidden_states, combine_metadata, bias=None):\n        assert bias is None, \"Bias is not supported in MoEAlltoAllvTokenDispatcher.\"\n\n        # 1. Preprocess using metadata\n        hidden_states = self._combine_preprocess(hidden_states, combine_metadata)\n\n        # 2. AllToAll\n        _, permutated_local_input_tokens, handle = async_all_to_all(\n            hidden_states,\n            combine_metadata.input_splits,\n            combine_metadata.output_splits,\n            self.ep_group,\n        )\n        handle.wait()\n        hidden_states.untyped_storage().resize_(0)\n\n        # 3. Postprocess using metadata\n        output = self._combine_postprocess(permutated_local_input_tokens, combine_metadata)\n\n        return output\n\n    def _dispatch_preprocess(self, hidden_states, topk_ids):\n        hidden_shape = hidden_states.shape\n        hidden_states = hidden_states.view(-1, hidden_states.size(-1))",
+        "hash": "58962e55df3f1a8ca5408cd273653844c8dfaa3ba470b6a0b6643332115a6778",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/token_dispatcher.py#L618-L643"
+      }
+    },
+    {
+      "id": "allgather",
+      "title": "AllGather 路径",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/prepare_finalize.py",
+      "anchor": "class PrepareAndFinalizeWithAllGather(",
+      "symbol": "PrepareAndFinalizeWithAllGather",
+      "summary": "收集组内输入、执行本地专家贡献，回程归约并恢复 Token 所有权。",
+      "input": "局部 Token 与 logits",
+      "output": "聚合输入 / 归约输出",
+      "note": "峰值受聚合后的输入、logits 及中间缓冲影响。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/prepare_finalize.py",
+        "symbol": "PrepareAndFinalizeWithAllGather",
+        "start": 409,
+        "end": 434,
+        "code": "\n\nclass PrepareAndFinalizeWithAllGather(PrepareAndFinalize):\n    \"\"\"\n    MoE communication strategy using All-Gather + Reduce-Scatter on EP group.\n    There are two sets of prepare and finalize:\n    1. _prepare_with_dp_group/_finalize_with_dp_group: When sequence parallelism is not enabled,\n    we gather inputs across DP ranks before MoE, scatter outputs after.\n    The communication and calculation process is as follows (AG, AR and RS\n    are abbreviations for All-Gather, All-Reduce and Reduce-Scatter, respectively):\n\n    Attn → TP AR → DP AG → MoE → DP RS → TP AR\n\n    2. _prepare_with_ep_group/_finalize_with_ep_group: When sequence parallelism is enabled,\n    the above process becomes:\n\n    TP AG → Attn → TP RS → TP AG → DP AG → MoE → DP RS → TP RS\n\n    This strategy further combines TP AG + DP AG into EP All-Gather and TP RS + DP RS\n    into EP Reduce-Scatter to improve communication performance. The optimized process is as follows:\n\n    TP AG → Attn → TP RS → EP AG → MoE → EP RS\n    \"\"\"\n\n    def _use_ep_sequence_parallel(self) -> bool:\n        \"\"\"Whether MoE itself must use the EP sequence-parallel path.",
+        "hash": "e51056ab24acd1f0bce91403549205be6abdeb99aa7d52deaa38a1e1358b2c4b",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/prepare_finalize.py#L409-L434"
+      }
+    },
+    {
+      "id": "mc2",
+      "title": "MC2 Dispatch / Combine",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+      "anchor": "class MC2CommImpl(",
+      "symbol": "MC2CommImpl",
+      "summary": "选择 MC2 Dispatcher 与 prepare/finalize 组合，使用 Ascend 专用通信算子。",
+      "input": "本地路由任务",
+      "output": "通信与计算输入输出",
+      "note": "容量、拓扑与硬件约束必须由实际配置校验。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+        "symbol": "MC2CommImpl",
+        "start": 229,
+        "end": 254,
+        "code": "\n\nclass MC2CommImpl(MoECommMethod):\n    \"\"\"This implementation is for the scenarios listed below:\n    1. `enable_expert_parallel=True`.\n    2. `npu_moe_distribute_dispatch` and `npu_moe_distribute_combine` are available.\n    3. `enable_expert_parallel=False` is not supported.\n\n    This implementation uses the MC2 communication method, which is optimized for\n    Communication and Computation parallelism on Ascend devices.\n    \"\"\"\n\n    def pad_and_split_input_ids(self, input_ids):\n        return self.prepare_finalize.pad_and_split_input_ids(input_ids)  # type: ignore[attr-defined]\n\n    def _get_token_dispatcher(self):\n        return TokenDispatcherWithMC2()\n\n    def _get_prepare_finalize(self):\n        return PrepareAndFinalizeWithMC2(self.moe_config)\n\n\nclass AlltoAllCommImpl(MoECommMethod):\n    \"\"\"This implementation is for the scenarios listed below:\n    1. `enable_expert_parallel=True`.\n    2. `npu_grouped_matmul` is available.",
+        "hash": "7c50b2183e9b6a356fef15d169d60a8327ea9d33a392f4df25ece02aef0a2245",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/moe_comm_method.py#L229-L254"
+      }
+    },
+    {
+      "id": "fused",
+      "title": "FUSED_MC2",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+      "anchor": "class FusedMC2CommImpl(",
+      "symbol": "FusedMC2CommImpl",
+      "summary": "融合执行路径可将分发、专家计算与回收下沉到更少算子，需匹配格式与功能。",
+      "input": "路由任务与量化权重",
+      "output": "融合专家结果",
+      "note": "不能把普通 Dispatch→MLP→Combine 当作该后端的固定 kernel 序列。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+        "symbol": "FusedMC2CommImpl",
+        "start": 273,
+        "end": 298,
+        "code": "\n\nclass FusedMC2CommImpl(MoECommMethod):\n    \"\"\"This implementation is for the scenarios listed below:\n    1. `enable_expert_parallel=True`.\n    2. `npu_moe_distribute_dispatch` and `npu_moe_distribute_combine` are available.\n    3. `enable_expert_parallel=False` is not supported.\n\n    This implementation uses the MC2 communication method, which is optimized for\n    Communication and Computation parallelism on Ascend devices.\n    \"\"\"\n\n    def __init__(self, moe_config):\n        super().__init__(moe_config)\n        self._mega_moe_hccl_state_stale = False\n        self.enable_fused_mc2 = get_ascend_config().enable_fused_mc2\n        if self.enable_fused_mc2 == 1 and is_mega_moe_supported():\n            self.mega_moe_symm_buffer = None\n            self.get_symm_buffer_for_mega_moe, self.mega_moe = moe_utils.load_cann_mega_moe_ops()\n            # TODO(ZT-AIA): Different CANN versions accept a different set of\n            # shared-expert kwargs, so snapshot the installed signature and drop\n            # the unsupported ones at call time. Remove this ABI filter (and\n            # _mega_moe_supported_kwargs) once every supported CANN build\n            # exposes these knobs (expected by end of November 2026).\n            # Newer CANN adds shared-expert ABI knobs (shared_expert_quant_out_dtype,\n            # shared_weight1_type/shared_weight2_type) that older operator builds",
+        "hash": "56a6b8be0ab9333f1b72308d2ab474d6178fdb8ba96bf74587a75f67ee02a311",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/moe_comm_method.py#L273-L298"
+      }
+    },
+    {
+      "id": "sp-shard",
+      "title": "模型侧 Token 分片",
+      "repo": "ascend",
+      "file": "vllm_ascend/models/common/ops/sequence_parallel.py",
+      "anchor": "def _ascend_sp_shard_impl(",
+      "symbol": "_ascend_sp_shard_impl",
+      "summary": "将 Token 行 pad 到 P 的倍数，再按 TP rank 取连续块；H 不切分。",
+      "input": "[T,H]",
+      "output": "[ceil(T/P),H]",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/models/common/ops/sequence_parallel.py",
+        "symbol": "_ascend_sp_shard_impl",
+        "start": 30,
+        "end": 55,
+        "code": "\n\ndef _ascend_sp_shard_impl(x: torch.Tensor) -> torch.Tensor:\n    \"\"\"Pad the token axis (dim 0) to the TP multiple, then take this rank's chunk.\"\"\"\n    tp_size = get_tensor_model_parallel_world_size()\n    tp_rank = get_tensor_model_parallel_rank()\n    sp_pad = (-x.shape[0]) % tp_size\n    # Upstream counterpart: vllm/models/common/ops/sequence_parallel.py\n    # sp_shard L45-48 (introduced in 38a466e7b6, #46789).\n    if sp_pad > 0:\n        x = F.pad(x, (0, 0) * (x.ndim - 1) + (0, sp_pad))\n    chunk = x.shape[0] // tp_size\n    out = x[tp_rank * chunk : (tp_rank + 1) * chunk]\n    return out.clone() if sp_pad == 0 else out\n\n\ndef _ascend_sp_shard_fake(x: torch.Tensor) -> torch.Tensor:\n    tp_size = get_tensor_model_parallel_world_size()\n    shape = list(x.shape)\n    shape[0] = cdiv(x.shape[0], tp_size)\n    return torch.empty(shape, dtype=x.dtype, device=x.device)\n\n\ndirect_register_custom_op(\n    op_name=\"ascend_sp_shard_impl\",\n    op_func=_ascend_sp_shard_impl,",
+        "hash": "6a68e745eea6d4e10fd7c092a8d51ab990a97317486b507249bb7633a3661fd2",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/models/common/ops/sequence_parallel.py#L30-L55"
+      }
+    },
+    {
+      "id": "sp-meta",
+      "title": "上游 SP 尺寸上下文",
+      "repo": "vllm",
+      "file": "vllm/model_executor/layers/fused_moe/runner/moe_runner.py",
+      "anchor": "def _sequence_parallel_context(",
+      "symbol": "MoERunner._sequence_parallel_context",
+      "summary": "通过 sp_local_sizes 维护来源边界，供后续可变长通信使用，本身不再切 tensor。",
+      "input": "DP metadata、SP size",
+      "output": "分片尺寸上下文",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm",
+        "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+        "file": "vllm/model_executor/layers/fused_moe/runner/moe_runner.py",
+        "symbol": "MoERunner._sequence_parallel_context",
+        "start": 706,
+        "end": 731,
+        "code": "        )\n\n    def _sequence_parallel_context(self):\n        \"\"\"Return a context manager for sequence-parallel token\n        redistribution.\n\n        When sequence parallelism is active, returns a context that handles\n        local size tracking for proper token scatter/gather. Otherwise\n        returns a no-op context.\n        \"\"\"\n        ctx = get_forward_context()\n        return (\n            ctx.dp_metadata.sp_local_sizes(\n                self.moe_config.sp_size,\n                pcp_size=self.moe_config.pcp_size,\n                use_ep=self.moe_config.use_ep,\n            )\n            if ctx.dp_metadata\n            else nullcontext()\n        )\n\n    def _maybe_add_zero_expert_output(\n        self,\n        result: torch.Tensor,\n    ) -> torch.Tensor:\n        \"\"\"Add the zero expert's contribution to the final result.",
+        "hash": "265c8670e3de387582e032db4e8286c7fc949a0ad2a70cc72e7bba287bd4d92b",
+        "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/runner/moe_runner.py#L706-L731"
+      }
+    },
+    {
+      "id": "sp-collective",
+      "title": "EP 收集与再分片",
+      "repo": "ascend",
+      "file": "vllm_ascend/ops/register_custom_ops.py",
+      "anchor": "def _maybe_all_gather_and_maybe_unpad_impl(",
+      "symbol": "_maybe_all_gather_and_maybe_unpad_impl",
+      "summary": "SP 布局下按各 rank 的真实分片尺寸收集、去补齐，避免把 padding 当有效 Token。",
+      "input": "SP 分片与尺寸元数据",
+      "output": "收集并去补齐的输入",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/ops/register_custom_ops.py",
+        "symbol": "_maybe_all_gather_and_maybe_unpad_impl",
+        "start": 54,
+        "end": 79,
+        "code": "\n\ndef _maybe_all_gather_and_maybe_unpad_impl(x: torch.Tensor) -> torch.Tensor:\n    \"\"\"EP communication only: EP all_gather followed by unpad according to the DP token distribution.\"\"\"\n    forward_context = get_forward_context()\n    dp_metadata = forward_context.dp_metadata\n    ep_group = get_ep_group()\n    local_sizes = _get_ep_local_sizes(dp_metadata, ep_group)\n    if local_sizes is not None:\n        max_local_size = max(local_sizes)\n        # all_gather requires equal-length inputs on every rank: pad to\n        # max_local_size first, then trim back to each rank's real local size.\n        x = _pad_to_ep_local_size(x, max_local_size)\n    # need to unpad from ep size\n    x = ep_group.all_gather(x, 0)\n    if dp_metadata is not None:\n        if local_sizes is not None:\n            # Uniform SP layout (ceil-div + repeat_interleave, the common\n            # SP-MoE case): every rank holds the same token count, so the\n            # gathered rows are already the global tokens in EP rank order\n            # and the re-assembly below would be an identity copy — run it\n            # only for genuinely uneven layouts.\n            if not all(size == local_sizes[0] for size in local_sizes):\n                max_local_size = max(local_sizes)\n                x = x.view(len(local_sizes), max_local_size, *x.shape[1:])\n                x = torch.cat([x[idx, :size] for idx, size in enumerate(local_sizes)], dim=0)",
+        "hash": "59bc87004413970b0c48c22925a10cb222f755b5569ba0a9b318937727554128",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/register_custom_ops.py#L54-L79"
+      }
+    },
+    {
+      "id": "control",
+      "title": "MRv2 EPLB Controller",
+      "repo": "ascend",
+      "file": "vllm_ascend/worker/v2/eplb.py",
+      "anchor": "class AscendEPLBController(",
+      "symbol": "AscendEPLBController",
+      "summary": "继承上游控制器，构建 Ascend 状态并设置批次负载采集阶段。",
+      "input": "并行与 EPLB 配置",
+      "output": "AscendEplbState",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/worker/v2/eplb.py",
+        "symbol": "AscendEPLBController",
+        "start": 36,
+        "end": 61,
+        "code": "\n\nclass AscendEPLBController(EPLBController):\n    \"\"\"Construct Ascend state and apply phase-filtered load collection.\"\"\"\n\n    def __init__(\n        self,\n        parallel_config: Any,\n        device: torch.device,\n        ascend_eplb_config: EplbConfig | None = None,\n    ) -> None:\n        super().__init__(parallel_config, device)\n        ascend_eplb_config = ascend_eplb_config or EplbConfig()\n        self.load_collection_phase = ascend_eplb_config.load_collection_phase\n        # The communicator choice needs one binding class on every EPLB rank,\n        # so reach a group consensus before the policy or state is built.\n        stair_config = (\n            resolve_ascend_eplb_communicator(parallel_config, ascend_eplb_config)\n            if parallel_config.enable_eplb\n            else ascend_eplb_config.stair_config\n        )\n        self.eplb_policy = create_eplb_policy(\n            parallel_config.eplb_config.policy,\n            stair_config,\n        )\n        self._load_collection_phase_matched = True",
+        "hash": "23f64824efc14e1df23dbea11f506402b56f831785ac78ba690015c567accb66",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/v2/eplb.py#L36-L61"
+      }
+    },
+    {
+      "id": "load",
+      "title": "记录有效执行负载",
+      "repo": "ascend",
+      "file": "vllm_ascend/distributed/eplb/eplb_state.py",
+      "anchor": "    def record_load(",
+      "symbol": "AscendEplbLayerState.record_load",
+      "summary": "按执行后的物理专家统计有效任务，结合来源信息去除补齐和重复数据。",
+      "input": "专家任务计数、有效掩码",
+      "output": "负载窗口记录",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/distributed/eplb/eplb_state.py",
+        "symbol": "AscendEplbLayerState.record_load",
+        "start": 116,
+        "end": 141,
+        "code": "        self.refresh_expert_replica_routing_table()\n\n    def record_load(\n        self,\n        expert_tokens: torch.Tensor | None,\n        group_list_type: int,\n        *,\n        topk_ids: torch.Tensor,\n        num_source_tokens: int,\n        is_sequence_parallel: bool = False,\n        all_gather_mask: Callable[[torch.Tensor], torch.Tensor] | None = None,\n    ) -> None:\n        \"\"\"Record MRV2 load, constructing and gathering source eligibility when needed.\"\"\"\n        local_load = None\n        if all_gather_mask is not None:\n            assert self.num_unpadded_tokens_tensors is not None and self.should_record_tensor is not None\n            num_unpadded_tokens = self.num_unpadded_tokens_tensors[dbo_current_ubatch_id()]\n            # Every MoE layer of this model derives the same mask from the same\n            # per-forward inputs, so gathering it in each one repeats a\n            # collective as many times as the model has MoE layers. Hold it on\n            # the forward context, which lives exactly as long as the mask is\n            # valid: warmup, graph capture and draft forwards each enter their\n            # own, and none of them passes through the EPLB controller.\n            # ``setdefault`` because DBO runs its micro-batches on two threads\n            # that share one context, and a lost list would leave the ranks\n            # gathering a different number of times.",
+        "hash": "1cc340525b736c02158605fe9ee3f034bbc3a055403683fc3c3c12820ab8ba1f",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/distributed/eplb/eplb_state.py#L116-L141"
+      }
+    },
+    {
+      "id": "rebalance",
+      "title": "上游布局重排事务",
+      "repo": "vllm",
+      "file": "vllm/distributed/eplb/eplb_state.py",
+      "anchor": "    def rearrange(",
+      "symbol": "EplbState.rearrange",
+      "summary": "上游维护负载窗口、placement 与重排生命周期，调用策略并协调搬运。",
+      "input": "统计负载与当前布局",
+      "output": "新的专家布局与迁移工作",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm",
+        "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+        "file": "vllm/distributed/eplb/eplb_state.py",
+        "symbol": "EplbState.rearrange",
+        "start": 929,
+        "end": 954,
+        "code": "                ls.num_unpadded_tokens_tensors = num_unpadded_tokens_tensors\n\n    def rearrange(\n        self,\n        is_profile: bool = False,\n        rank_mapping: dict[int, int] | None = None,\n        use_last_expert_load: bool = False,\n    ) -> torch.Tensor | None:\n        \"\"\"Rearrange the experts according to the current load.\n\n        Args:\n            is_profile (bool): If `True`, perform a dummy rearrangement.\n                This is used in `profile_run` to reserve enough memory,\n                no memory movement will be performed. Default is False.\n            rank_mapping (dict[int, int] | None): The rank mapping\n                when scaling is done in EEP.\n            use_last_expert_load: Use the last reshuffle's logical-expert totals.\n\n        \"\"\"\n        ep_group = get_ep_group().device_group\n        ep_rank = ep_group.rank()\n\n        start_event = None\n        end_event = None\n        is_main_rank = ep_rank == 0\n        if is_main_rank:",
+        "hash": "6a82f0594e9ea880f69fde8931fd41ad1f1dfa7c0cb48fd09ddeb71fc1d70021",
+        "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/eplb/eplb_state.py#L929-L954"
+      }
+    },
+    {
+      "id": "async",
+      "title": "上游异步搬运 worker",
+      "repo": "vllm",
+      "file": "vllm/distributed/eplb/async_worker.py",
+      "anchor": "def start_async_worker(",
+      "symbol": "start_async_worker",
+      "summary": "异步迁移状态机与主线程提交协作，不意味着权重搬运免费或无需同步。",
+      "input": "迁移计划与权重视图",
+      "output": "可提交的层结果",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm",
+        "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+        "file": "vllm/distributed/eplb/async_worker.py",
+        "symbol": "start_async_worker",
+        "start": 22,
+        "end": 47,
+        "code": "\n\ndef start_async_worker(\n    state: \"EplbState\",\n    is_profile: bool = False,\n) -> threading.Thread:\n    rank = get_eplb_group().device_group.rank()\n    device_index = state.device_index\n    assert state.is_async\n\n    def thread_target() -> None:\n        assert device_index is not None\n        torch.accelerator.set_device_index(device_index)\n        stream = torch.Stream(device=torch.accelerator.current_accelerator())\n        try:\n            transfer_run_periodically(\n                state=state,\n                stream=stream,\n                is_profile=is_profile,\n            )\n        except Exception as exc:\n            state.async_worker_error = exc\n            logger.exception(\"async loop error (Rank %d): %s\", rank, str(exc))\n\n    thread = threading.Thread(target=thread_target, daemon=True)\n    thread.start()",
+        "hash": "67d7cf720cee01890c0e61edb4b0735a4e11d962611f3bb2104c9837ecf45827",
+        "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/eplb/async_worker.py#L22-L47"
+      }
+    },
+    {
+      "id": "lookup",
+      "title": "刷新物理专家 lookup",
+      "repo": "ascend",
+      "file": "vllm_ascend/distributed/eplb/eplb_state.py",
+      "anchor": "    def refresh_expert_replica_routing_table(",
+      "symbol": "AscendEplbLayerState.refresh_expert_replica_routing_table",
+      "summary": "依据已提交 placement 原位更新稳定设备表，保持图捕获与长期引用有效。",
+      "input": "已提交物理布局",
+      "output": "逻辑到物理路由表",
+      "note": "更新映射必须晚于对应权重就绪，随后才能确认接收缓冲可复用。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/distributed/eplb/eplb_state.py",
+        "symbol": "AscendEplbLayerState.refresh_expert_replica_routing_table",
+        "start": 192,
+        "end": 217,
+        "code": "        )\n\n    def refresh_expert_replica_routing_table(self) -> None:\n        logical_to_physical_map = self.logical_to_physical_map\n        logical_replica_count = self.logical_replica_count\n        if logical_to_physical_map is None or logical_replica_count is None:\n            raise RuntimeError(\"Cannot build the replica routing table before EPLB layer state is initialized.\")\n\n        new_routing_table = build_expert_replica_routing_table(\n            logical_to_physical_map,\n            logical_replica_count,\n            get_ep_group().rank_in_group,\n        )\n        if (\n            self.expert_replica_routing_table is not None\n            and self.expert_replica_routing_table.shape == new_routing_table.shape\n        ):\n            self.expert_replica_routing_table.copy_(\n                new_routing_table,\n                non_blocking=True,\n            )\n        else:\n            self.expert_replica_routing_table = new_routing_table\n        if get_current_hardware_profile().moe_comm_policy is MoECommPolicy.CAPACITY_AND_WORLD_SIZE:\n            common_table = build_expert_replica_routing_table(logical_to_physical_map, logical_replica_count, ep_rank=0)\n            if self.allgather_expert_replica_routing_table is None:",
+        "hash": "b5043f6c902f5a5649b30286eb4bba6bc3ce526b30b04a70dda0d42060fe5c0e",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/distributed/eplb/eplb_state.py#L192-L217"
+      }
+    },
+    {
+      "id": "offload-check",
+      "title": "Offload 支持边界",
+      "repo": "ascend",
+      "file": "vllm_ascend/distributed/expert_transfer/expert_offload_config.py",
+      "anchor": "def validate_expert_offload_config(",
+      "symbol": "validate_expert_offload_config",
+      "summary": "本快照要求 950、单 worker，拒绝 EP/EPLB 等不支持组合，不能叠加到当前 EP 配置。",
+      "input": "模型、硬件、并行配置",
+      "output": "通过校验或明确报错",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/distributed/expert_transfer/expert_offload_config.py",
+        "symbol": "validate_expert_offload_config",
+        "start": 23,
+        "end": 48,
+        "code": "\n\ndef validate_expert_offload_config(\n    expert_offload_config: ExpertOffloadConfig, vllm_config: VllmConfig, ascend_config: AscendConfig\n) -> None:\n    if not expert_offload_config.enabled:\n        return\n    if get_current_hardware_profile().device_adaptor_family != DeviceAdaptorFamily.FP8_OPTIMIZED:\n        raise ValueError(\"expert offload currently requires Ascend 950 (A5) hardware\")\n    if not vllm_config.model_config.enforce_eager:\n        from vllm.config.compilation import CompilationMode, CUDAGraphMode\n\n        compilation_config = vllm_config.compilation_config\n        if compilation_config.mode != CompilationMode.NONE or compilation_config.cudagraph_mode not in (\n            CUDAGraphMode.NONE,\n            CUDAGraphMode.FULL_DECODE_ONLY,\n        ):\n            raise ValueError(\n                \"expert offload graph requires compilation mode=NONE and cudagraph_mode=FULL_DECODE_ONLY \"\n                \"(or NONE for eager); compiled/piecewise and mixed graphs are unsupported\"\n            )\n    if vllm_config.model_config.enable_sleep_mode:\n        raise ValueError(\n            \"expert offload has no sleep/wake protocol for resident slots and graph buffers; disable sleep mode\"\n        )\n    parallel_config = vllm_config.parallel_config",
+        "hash": "0b2a4a5816d873e4c741fb948201d7515b118cd32e231c3cfd7e1a515933a825",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/distributed/expert_transfer/expert_offload_config.py#L23-L48"
+      }
+    },
+    {
+      "id": "residency",
+      "title": "准备驻留专家",
+      "repo": "ascend",
+      "file": "vllm_ascend/distributed/expert_transfer/expert_offload_manager.py",
+      "anchor": "    def prepare(self, layer, topk_ids):",
+      "symbol": "LayerOffloadBinding.prepare",
+      "summary": "Decode 工作集可容纳时命中保留、缺失加载；Prefill/超容量使用一层全专家池。",
+      "input": "本批 Top-K 专家集合",
+      "output": "执行权重视图与槽位 ID",
+      "note": "整批专家并集可能大于单 Token Top-K。",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/distributed/expert_transfer/expert_offload_manager.py",
+        "symbol": "LayerOffloadBinding.prepare",
+        "start": 166,
+        "end": 191,
+        "code": "        self.slot_to_expert = tuple(range(self.num_slots))\n\n    def prepare(self, layer, topk_ids):\n        # Loading attaches the manager and creates the map before any forward.\n        manager = cast(ExpertOffloadManager, self.manager)\n        mapping = cast(ExpertMapBuffer, self.mapping)\n        if self.device.type == \"npu\" and torch.npu.is_current_stream_capturing():\n            return (\n                ExpertWeightView(layer, self.resident),\n                self.prepare_graph(topk_ids),\n                manager.get_comm(self, layer.moe_config, self.num_slots),\n            )\n        if not manager.has_prefill:\n            # Only resident selection needs routes on the CPU; prefill loads all experts.\n            selected_expert_ids = set(topk_ids.detach().to(device=\"cpu\", dtype=torch.long).reshape(-1).tolist())\n            if len(selected_expert_ids) <= self.num_slots:\n                # The blocking route D2H above also fences the previous use of this host map.\n                slot_to_expert, expert_loads = self.plan_expert_loads(selected_expert_ids)\n                self.load_resident(slot_to_expert, expert_loads)\n                return (\n                    ExpertWeightView(layer, self.resident),\n                    mapping.remap(topk_ids),\n                    manager.get_comm(self, layer.moe_config, self.num_slots),\n                )\n        # Prefill and decode batches exceeding resident capacity use all experts.\n        return (",
+        "hash": "6c383ce8f64c2b4ad63b12018e0537741ad293b87f0c5bbfda1af2e268dcf6c3",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/distributed/expert_transfer/expert_offload_manager.py#L166-L191"
+      }
+    },
+    {
+      "id": "offload-exec",
+      "title": "复用量化专家执行",
+      "repo": "ascend",
+      "file": "vllm_ascend/distributed/expert_transfer/expert_offload_method.py",
+      "anchor": "    def apply(",
+      "symbol": "ExpertOffloadMoEMethod.apply",
+      "summary": "临时切换执行权重视图与通信对象，使用原生量化计算，finally 恢复上下文。",
+      "input": "已驻留权重、物理槽位 ID",
+      "output": "保持逻辑路由语义的输出",
+      "note": "",
+      "evidence": {
+        "repo": "vllm-project/vllm-ascend",
+        "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+        "file": "vllm_ascend/distributed/expert_transfer/expert_offload_method.py",
+        "symbol": "ExpertOffloadMoEMethod.apply",
+        "start": 38,
+        "end": 63,
+        "code": "        layer._expert_offload_binding.initialize_storage(layer)\n\n    def apply(\n        self,\n        layer: torch.nn.Module,\n        x: torch.Tensor,\n        topk_weights: torch.Tensor,\n        topk_ids: torch.Tensor,\n        shared_experts=None,\n        shared_experts_input: torch.Tensor | None = None,\n    ) -> torch.Tensor:\n        original_comm = _EXTRA_CTX.moe_comm_method\n        try:\n            execution_layer, physical_topk_ids, execution_comm = layer._expert_offload_binding.prepare(layer, topk_ids)\n            _EXTRA_CTX.moe_comm_method = execution_comm\n            return super().apply(\n                layer=execution_layer,\n                x=x,\n                topk_weights=topk_weights,\n                topk_ids=physical_topk_ids,\n                shared_experts=shared_experts,\n                shared_experts_input=shared_experts_input,\n            )\n        finally:\n            _EXTRA_CTX.moe_comm_method = original_comm\n",
+        "hash": "ab2a9e89bd981609672fc3435c822f28939025fb0438ac343ee5378000d8b4b0",
+        "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/distributed/expert_transfer/expert_offload_method.py#L38-L63"
+      }
+    }
+  ],
+  "scenes": [
+    {
+      "id": "overview",
+      "name": "跨仓库总览",
+      "en": "CROSS-REPOSITORY",
+      "desc": "从上游工厂到 Ascend 执行，再进入上游继承钩子。总览边表示阶段与依赖，不是逐条运行轨迹。",
+      "ids": [
+        "factory",
+        "runner",
+        "transform",
+        "routed",
+        "comm",
+        "mlp",
+        "finalize",
+        "return"
+      ],
+      "edges": [
+        [
+          "factory",
+          "runner",
+          "覆盖解析"
+        ],
+        [
+          "runner",
+          "transform",
+          "继承调用"
+        ],
+        [
+          "transform",
+          "routed",
+          "流程展开"
+        ],
+        [
+          "routed",
+          "comm",
+          "量化方法委派"
+        ],
+        [
+          "comm",
+          "mlp",
+          "直接调用"
+        ],
+        [
+          "mlp",
+          "finalize",
+          "结果恢复"
+        ],
+        [
+          "finalize",
+          "return",
+          "输出钩子"
+        ]
+      ]
+    },
+    {
+      "id": "init",
+      "name": "初始化与上下文",
+      "en": "INITIALIZATION",
+      "desc": "建立执行管线、注册通信实例，并为每批输入选择策略。专家加载与并行组内部尚未逐项展开。",
+      "ids": [
+        "factory",
+        "runner",
+        "setup",
+        "select",
+        "context"
+      ],
+      "edges": [
+        [
+          "factory",
+          "runner",
+          "覆盖解析"
+        ],
+        [
+          "runner",
+          "setup",
+          "初始化调用"
+        ],
+        [
+          "setup",
+          "select",
+          "生命周期"
+        ],
+        [
+          "select",
+          "context",
+          "类型选择"
+        ]
+      ]
+    },
+    {
+      "id": "forward",
+      "name": "MoE Forward",
+      "en": "EXECUTION FLOW",
+      "desc": "分阶段执行的逻辑主线。共享专家的事件重叠与融合由具体配置决定。",
+      "ids": [
+        "runner",
+        "routed",
+        "router",
+        "shared",
+        "comm",
+        "mlp",
+        "finalize",
+        "return"
+      ],
+      "edges": [
+        [
+          "runner",
+          "routed",
+          "调用入口"
+        ],
+        [
+          "routed",
+          "router",
+          "Top-K"
+        ],
+        [
+          "router",
+          "comm",
+          "执行委派"
+        ],
+        [
+          "runner",
+          "shared",
+          "条件分支"
+        ],
+        [
+          "comm",
+          "mlp",
+          "直接调用"
+        ],
+        [
+          "mlp",
+          "finalize",
+          "回收恢复"
+        ],
+        [
+          "shared",
+          "return",
+          "结果合并"
+        ],
+        [
+          "finalize",
+          "return",
+          "输出钩子"
+        ]
+      ]
+    },
+    {
+      "id": "comm",
+      "name": "通信后端",
+      "en": "COMMUNICATION",
+      "desc": "选择阅读路径，比较 AllGather、All-to-All、MC2 与融合实现。这里不模拟硬件运行时策略。",
+      "ids": [
+        "select",
+        "prepare",
+        "alltoall",
+        "mlp",
+        "combine",
+        "finalize"
+      ],
+      "edges": [
+        [
+          "select",
+          "prepare",
+          "策略组合"
+        ],
+        [
+          "prepare",
+          "alltoall",
+          "分发输入"
+        ],
+        [
+          "alltoall",
+          "mlp",
+          "分组计算"
+        ],
+        [
+          "mlp",
+          "combine",
+          "专家输出"
+        ],
+        [
+          "combine",
+          "finalize",
+          "恢复布局"
+        ]
+      ],
+      "variants": {
+        "ALLTOALL": {
+          "label": "All-to-All",
+          "ids": [
+            "select",
+            "prepare",
+            "alltoall",
+            "mlp",
+            "combine",
+            "finalize"
+          ],
+          "edges": [
+            [
+              "select",
+              "prepare",
+              "策略组合"
+            ],
+            [
+              "prepare",
+              "alltoall",
+              "分发输入"
+            ],
+            [
+              "alltoall",
+              "mlp",
+              "分组计算"
+            ],
+            [
+              "mlp",
+              "combine",
+              "专家输出"
+            ],
+            [
+              "combine",
+              "finalize",
+              "恢复布局"
+            ]
+          ]
+        },
+        "ALLGATHER": {
+          "label": "AllGather",
+          "ids": [
+            "select",
+            "allgather",
+            "mlp",
+            "finalize"
+          ],
+          "edges": [
+            [
+              "select",
+              "allgather",
+              "后端选择"
+            ],
+            [
+              "allgather",
+              "mlp",
+              "计算阶段"
+            ],
+            [
+              "mlp",
+              "finalize",
+              "结果恢复"
+            ]
+          ]
+        },
+        "MC2": {
+          "label": "MC2",
+          "ids": [
+            "select",
+            "mc2",
+            "mlp",
+            "finalize"
+          ],
+          "edges": [
+            [
+              "select",
+              "mc2",
+              "后端选择"
+            ],
+            [
+              "mc2",
+              "mlp",
+              "计算阶段"
+            ],
+            [
+              "mlp",
+              "finalize",
+              "结果恢复"
+            ]
+          ]
+        },
+        "FUSED_MC2": {
+          "label": "FUSED_MC2",
+          "ids": [
+            "select",
+            "fused",
+            "mlp",
+            "finalize"
+          ],
+          "edges": [
+            [
+              "select",
+              "fused",
+              "后端选择"
+            ],
+            [
+              "fused",
+              "mlp",
+              "融合执行概念"
+            ],
+            [
+              "mlp",
+              "finalize",
+              "结果恢复"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "id": "sp",
+      "name": "SP 与 Token 布局",
+      "en": "TOKEN OWNERSHIP",
+      "desc": "分片发生在模型包装层；上下文记录来源边界，EP collective 再完成收集与恢复。",
+      "ids": [
+        "sp-shard",
+        "sp-meta",
+        "sp-collective",
+        "comm",
+        "finalize"
+      ],
+      "edges": [
+        [
+          "sp-shard",
+          "sp-meta",
+          "布局元数据"
+        ],
+        [
+          "sp-meta",
+          "sp-collective",
+          "边界信息"
+        ],
+        [
+          "sp-collective",
+          "comm",
+          "专家计算"
+        ],
+        [
+          "comm",
+          "finalize",
+          "结果恢复"
+        ]
+      ]
+    },
+    {
+      "id": "eplb",
+      "name": "EPLB 负载均衡",
+      "en": "LOAD BALANCING",
+      "desc": "控制、统计、异步迁移与映射提交的生命周期。权重搬运不同于 Forward 的 Token 通信。",
+      "ids": [
+        "control",
+        "load",
+        "rebalance",
+        "async",
+        "lookup",
+        "router"
+      ],
+      "edges": [
+        [
+          "control",
+          "load",
+          "采样配置"
+        ],
+        [
+          "load",
+          "rebalance",
+          "统计依赖"
+        ],
+        [
+          "rebalance",
+          "async",
+          "迁移事务"
+        ],
+        [
+          "async",
+          "lookup",
+          "安全提交后"
+        ],
+        [
+          "lookup",
+          "router",
+          "物理映射"
+        ]
+      ]
+    },
+    {
+      "id": "offload",
+      "name": "专家 Offload",
+      "en": "EXPERT RESIDENCY",
+      "desc": "独立的单 worker 路径。本快照不支持与 EP/EPLB 同时开启，仅支持特定 MXFP 格式。",
+      "ids": [
+        "offload-check",
+        "router",
+        "residency",
+        "offload-exec"
+      ],
+      "edges": [
+        [
+          "offload-check",
+          "router",
+          "校验通过"
+        ],
+        [
+          "router",
+          "residency",
+          "逻辑专家集合"
+        ],
+        [
+          "residency",
+          "offload-exec",
+          "就绪权重与槽位"
+        ]
+      ]
+    }
+  ]
+}
