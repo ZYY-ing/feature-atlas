@@ -1,5 +1,7 @@
 # Feature Atlas
 
+[在线体验](https://zyy-ing.github.io/feature-atlas/)
+
 面向固定源码版本的特性可视化阅读工具。首版提供 MRv2 EP 的 7 个视图、30 个源码节点，覆盖跨仓库主线、初始化与上下文、Forward、通信后端、SP、EPLB 和独立专家 Offload。
 
 ## 本地使用
