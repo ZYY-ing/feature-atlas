@@ -37,6 +37,12 @@ test('a mismatched note import is rejected before any existing note is changed',
  assert.throws(()=>s.import(JSON.stringify({version:1,notes:[{...good,text:'不应写入'},bad]})));assert.equal(s.get(meta,1),'原有笔记');
  assert.throws(()=>s.import(JSON.stringify({version:1,notes:[{...good,line:meta.lineCount+1}]})));
 });
+test('saving from two open readers does not overwrite notes on other lines',()=>{
+ const storage=memory(),one=new NotesStore(storage,a.sourceFiles),two=new NotesStore(storage,a.sourceFiles);
+ one.save(meta,1,code[0],'第一窗口');two.save(meta,2,code[1],'第二窗口');
+ const fresh=new NotesStore(storage,a.sourceFiles);assert.equal(fresh.get(meta,1),'第一窗口');assert.equal(fresh.get(meta,2),'第二窗口');
+ one.save(meta,1,code[0],'');assert.equal(new NotesStore(storage,a.sourceFiles).get(meta,2),'第二窗口');
+});
 test('notes for another pinned version are preserved; blocked browser storage still allows export',()=>{
  const storage=memory(),foreign={repo:meta.repo,sha:'0'.repeat(40),file:meta.file,line:1,text:'旧版'};storage.setItem(notesKey,JSON.stringify({version:1,notes:[foreign]}));const s=new NotesStore(storage,a.sourceFiles);s.save(meta,1,code[0],'新版');assert.equal(JSON.parse(storage.getItem(notesKey)).notes.length,2);
  const blocked=new NotesStore({getItem(){throw Error()},setItem(){throw Error()}},a.sourceFiles);assert.equal(blocked.save(meta,1,code[0],'可导出'),false);assert.equal(JSON.parse(blocked.export()).notes[0].text,'可导出');

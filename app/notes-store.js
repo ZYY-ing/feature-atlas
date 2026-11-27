@@ -13,10 +13,13 @@ export class NotesStore{
   const n={repo:file.repo,sha:file.sha,file:file.file,sourceHash:file.hash,line,originalLine,text,updatedAt:new Date().toISOString()};validateNote(n,this.files);
   if(text.trim())this.notes[noteKey(file,line)]=n;else delete this.notes[noteKey(file,line)];
   try{
-   // Preserve notes for other feature/version snapshots in this browser.
+   // Update only this anchor, preserving other tabs and other source versions.
    const prior=JSON.parse(this.storage.getItem(notesKey)||'{"version":1,"notes":[]}');
-   const foreign=(prior.notes||[]).filter(n=>!Object.values(this.files).some(f=>f.repo===n.repo&&f.sha===n.sha&&f.file===n.file));
-   this.storage.setItem(notesKey,JSON.stringify({version:1,notes:[...foreign,...Object.values(this.notes)]}));this.error='';return true;
+   const other=(prior.notes||[]).filter(item=>noteKey(item,item.line)!==noteKey(n,line));
+   const merged=[...other,...(text.trim()?[n]:[])];
+   this.storage.setItem(notesKey,JSON.stringify({version:1,notes:merged}));
+   for(const item of merged)try{validateNote(item,this.files);this.notes[noteKey(item,item.line)]=item}catch{}
+   this.error='';return true;
   }catch{this.error='浏览器未能保存；当前笔记仍可导出，请立即备份。';return false;}
  }
  export(){return JSON.stringify({version:1,notes:Object.values(this.notes)},null,2)}
