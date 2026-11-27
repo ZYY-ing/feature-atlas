@@ -10,12 +10,12 @@ const {nodes,scenes,manifest}=atlas, byId=new Map(nodes.map(n=>[n.id,n]));
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const list=items=>`<ol>${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`;
 const logo='<svg viewBox="0 0 32 32"><rect x="3" y="3" width="10" height="10" rx="3"/><rect x="19" y="19" width="10" height="10" rx="3"/><path d="M13 8h11v11M8 13v11h11" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
-let state={scene:'overview',selected:null,tab:'principle',backend:'ALLTOALL',zoom:1};
-function restore(){const q=new URLSearchParams(location.hash.slice(1));if(scenes.some(s=>s.id===q.get('view')))state.scene=q.get('view');state.selected=byId.has(q.get('node'))?q.get('node'):null;if(['ALLTOALL','ALLGATHER','MC2','FUSED_MC2'].includes(q.get('backend')))state.backend=q.get('backend');if(['principle','tensor','code'].includes(q.get('tab')))state.tab=q.get('tab');}
+let state={scene:'overview',selected:null,trace:null,tab:'principle',backend:'ALLTOALL',zoom:1};
+function restore(){const q=new URLSearchParams(location.hash.slice(1));if(scenes.some(s=>s.id===q.get('view')))state.scene=q.get('view');state.selected=byId.has(q.get('node'))?q.get('node'):null;state.trace=(atlas.transitionPaths||[]).some(p=>p.id===q.get('path'))?q.get('path'):null;if(state.trace){state.selected=null;state.scene=scenes.find(s=>s.connectors?.some(c=>c.path===state.trace))?.id||state.scene;state.tab='code'}if(['ALLTOALL','ALLGATHER','MC2','FUSED_MC2'].includes(q.get('backend')))state.backend=q.get('backend');if(['principle','tensor','code'].includes(q.get('tab')))state.tab=q.get('tab');}
 restore();
-if(state.selected)document.body.classList.add('detail-open');
+if(state.selected||state.trace)document.body.classList.add('detail-open');
 function scene(){const s=scenes.find(s=>s.id===state.scene)||scenes[0];return {...s,...s.variants?.[state.backend]};}
-function urlState(){history.replaceState(null,'',`#view=${state.scene}${state.selected?'&node='+state.selected:''}${scene().variants?'&backend='+state.backend:''}${state.tab!=='principle'?'&tab='+state.tab:''}`)}
+function urlState(){history.replaceState(null,'',`#view=${state.scene}${state.selected?'&node='+state.selected:''}${state.trace?'&path='+state.trace:''}${scene().variants?'&backend='+state.backend:''}${state.tab!=='principle'?'&tab='+state.tab:''}`)}
 document.body.classList.toggle('dark',localStorage.getItem('feature-atlas-theme')==='dark');
 document.querySelector('#app').innerHTML=`
 <header class="topbar"><a class="brand" href="#view=overview">${logo}<span>Feature<span class="light">Atlas</span><small>读懂特性，沿着源码走</small></span></a><label class="feature-pick"><select aria-label="选择特性">${registry.map(f=>`<option value="${esc(f.id)}" ${f.id===feature.id?'selected':''}>${esc(f.label)}</option>`).join('')}</select></label><div class="versions">${Object.entries(manifest.versions).map(([key,v])=>`<a href="https://github.com/${v.repo}/tree/${v.sha}" target="_blank" rel="noreferrer">${key==='vllm'?'vLLM':'Ascend'} <code>${v.sha.slice(0,7)}</code></a>`).join('')}<span class="badge">MRv2</span></div><div class="header-actions"><button id="help">版本与核查</button><button id="theme" aria-label="切换明暗主题">◐</button><a href="https://github.com/ZYY-ing/feature-atlas" target="_blank" rel="noreferrer">GitHub</a></div></header>
@@ -44,8 +44,9 @@ const stage=document.querySelector('#stage');let drag=null;
 stage.onpointerdown=e=>{if(e.target.closest('button,a,select'))return;drag={x:e.clientX,y:e.clientY,left:stage.scrollLeft,top:stage.scrollTop};stage.setPointerCapture(e.pointerId)};
 stage.onpointermove=e=>{if(drag){stage.scrollLeft=drag.left-(e.clientX-drag.x);stage.scrollTop=drag.top-(e.clientY-drag.y)}};
 stage.onpointerup=stage.onpointercancel=()=>{drag=null};
-function changeScene(id){state.scene=id;state.selected=null;state.tab='principle';state.zoom=1;render();urlState();stage.scrollTop=0;}
-function choose(id){state.selected=id;state.tab='principle';document.body.classList.remove('inspector-hidden');document.body.classList.add('detail-open');document.querySelectorAll('.graph-node').forEach(e=>e.classList.toggle('selected',e.dataset.id===id));renderDetail();urlState();}
+function changeScene(id){state.scene=id;state.selected=null;state.trace=null;state.tab='principle';state.zoom=1;render();urlState();stage.scrollTop=0;}
+function choose(id){state.selected=id;state.trace=null;state.tab='principle';document.body.classList.remove('inspector-hidden');document.body.classList.add('detail-open');document.querySelectorAll('.graph-node').forEach(e=>e.classList.toggle('selected',e.dataset.id===id));document.querySelectorAll('[data-trace]').forEach(b=>b.classList.remove('selected'));renderDetail();urlState();}
+function chooseTrace(id){state.trace=id;state.selected=null;state.tab='code';document.body.classList.remove('inspector-hidden');document.body.classList.add('detail-open');document.querySelectorAll('.graph-node').forEach(e=>e.classList.remove('selected'));document.querySelectorAll('[data-trace]').forEach(b=>b.classList.toggle('selected',b.dataset.trace===id));renderDetail();urlState();}
 function render(){
  const s=scene();
  document.querySelector('#scene-title').textContent=s.name;document.querySelector('#scene-description').textContent=s.desc;
@@ -58,6 +59,9 @@ function render(){
  const backend=document.querySelector('#backend');backend.hidden=!s.variants;if(s.variants)backend.innerHTML=Object.entries(s.variants).map(([key,v])=>`<option value="${key}" ${state.backend===key?'selected':''}>${v.label}</option>`).join('');
  const single=s.rows.every(r=>r.length===1),canvas=document.querySelector('#canvas');canvas.className=`${s.modules?'macro-map':'node-map'} ${single?'single-column':''}`;
  canvas.innerHTML=`<svg class="connections" aria-label="阶段与数据关系"><defs><marker id="end" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0L7 3.5L0 7Z"/></marker></defs><g id="edges"></g></svg><div class="flow-grid">${s.rows.map((row,i)=>row.map((id,col)=>{if(!id)return '';const n=byId.get(id),m=s.modules?.[id],drill=m?.view||s.drills?.[id];return `<article class="graph-node ${n.repo} ${state.selected===id?'selected':''} ${m?'module-card':''}" data-id="${id}" style="grid-row:${i+1};grid-column:${col+1}"><button class="node-select" data-select="${id}" ${m?'data-module="'+m.view+'"':''}><span class="node-meta"><span>${m?'FRAMEWORK':n.repo==='vllm'?'vLLM · 上游':'ASCEND · 适配'}</span><span>${String(s.ids.indexOf(id)+1).padStart(2,'0')}</span></span><strong>${esc(m?.title||n.title)}</strong><span class="node-subtitle">${esc(m?.subtitle||n.lesson.steps[0])}</span>${m?'':`<code>${esc(n.symbol)}</code>`}</button>${drill?`<button class="drill" data-drill="${drill}">展开${m?'框架':'子流程'} <span>＋</span></button>`:''}</article>`}).join('')).join('')}</div>`;
+ canvas.classList.toggle('has-call-connectors',!!s.connectors?.length);
+ canvas.classList.toggle('has-entry-connector',!!s.connectors?.some(c=>!c.from));
+ canvas.insertAdjacentHTML('beforeend','<div id="call-connectors"></div>');
  canvas.querySelectorAll('[data-select]').forEach(b=>b.onclick=()=>b.dataset.module?changeScene(b.dataset.module):choose(b.dataset.select));
  canvas.querySelectorAll('[data-drill]').forEach(b=>b.onclick=()=>changeScene(b.dataset.drill));
  document.querySelector('#graph-note').innerHTML=(s.notes||[]).map(n=>`<p>${esc(n)}</p>`).join('');
@@ -78,8 +82,23 @@ function drawEdges(){
   else if(far){const side=cross?width-8:8;d=`M${p.x+(cross?p.w:0)} ${p.y+p.h/2}H${side}V${q.y-24}H${q.x+q.w/2}V${q.y}`;tx=side+10;ty=q.y-30;}
   else{const x1=p.x+p.w/2,y1=p.y+p.h,x2=q.x+q.w/2,y2=q.y,mid=y1+(y2-y1)/2;d=`M${x1} ${y1}V${mid}H${x2}V${y2}`;tx=(x1+x2)/2;ty=mid-7;}
   tx=Math.max(12+label.length*5,Math.min(width-12-label.length*5,tx));
-  return `<g class="edge ${feedback||/条件|分支|后续|依赖|注册|资格/.test(label)?'dashed':''}"><path d="${d}"/><text x="${tx}" y="${ty}" text-anchor="middle">${esc(label)}</text><title>${esc(byId.get(a).title+' → '+byId.get(b).title+'：'+label)}</title></g>`;
+  const hasConnector=s.connectors?.some(c=>c.from===a&&c.to===b);
+  return `<g class="edge ${feedback||/条件|分支|后续|依赖|注册|资格/.test(label)?'dashed':''}"><path d="${d}"/>${hasConnector?'':`<text x="${tx}" y="${ty}" text-anchor="middle">${esc(label)}</text>`}<title>${esc(byId.get(a).title+' → '+byId.get(b).title+'：'+label)}</title></g>`;
  }).join('');
+ drawConnectors(s,positions);
+}
+function drawConnectors(s,positions){
+ const extra=[];
+ document.querySelector('#call-connectors').innerHTML=(s.connectors||[]).map(c=>{
+  const target=positions.get(c.to),from=positions.get(c.from);if(!target)return '';
+  const x=from?(from.x+from.w/2+target.x+target.w/2)/2:target.x+target.w/2;
+  const y=from?(from.y+from.h+target.y)/2:target.y-42;
+  if(!from)extra.push(`<g class="edge"><path d="M${x} ${y+10}V${target.y}"/></g>`);
+  const title=(atlas.transitionPaths||[]).find(p=>p.id===c.path)?.title||c.caption;
+  return `<button class="call-connector ${state.trace===c.path?'selected':''}" data-trace="${esc(c.path)}" style="left:${x}px;top:${y}px" aria-label="展开调用链：${esc(title)}" title="${esc(title)}"><span class="connector-dot"></span><span class="connector-caption">${esc(c.caption)}</span></button>`;
+ }).join('');
+ document.querySelector('#edges').insertAdjacentHTML('beforeend',extra.join(''));
+ document.querySelectorAll('[data-trace]').forEach(b=>b.onclick=()=>chooseTrace(b.dataset.trace));
 }
 function applyZoom(){const c=document.querySelector('#canvas');c.style.transform=`scale(${state.zoom})`;document.querySelector('#canvas-wrap').style.width=c.offsetWidth*state.zoom+'px';document.querySelector('#canvas-wrap').style.height=c.offsetHeight*state.zoom+'px';}
 function zoom(d){state.zoom=Math.max(.55,Math.min(1.4,state.zoom+d));applyZoom()}
@@ -101,9 +120,11 @@ function lessonHtml(l,tab){
  return `<h3>为什么需要这一步</h3><p>${esc(l.why)}</p><h3>输入与输出</h3>${ioHtml(l.io)}<h3>它具体做什么</h3>${list(l.steps)}<div class="example"><span>跟着一个小例子理解</span>${exampleContextHtml(l.exampleContext)}<p>${esc(l.example)}</p>${exampleDetailsHtml(l.exampleDetails)}</div><h3>沿源码怎么读</h3>${list(l.read)}${l.trap?`<div class="callout"><b>理解边界</b><p>${esc(l.trap)}</p></div>`:''}`;
 }
 function ioHtml(io){return io?`<div class="io-contract">${[['input','输入'],['output','输出']].map(([key,title])=>`<section><b>${title}：</b><span>${esc(io[key].meaning)}</span><div><small>样例数据</small><code>${esc(io[key].sample)}</code></div></section>`).join('')}</div><p class="io-boundary">这里说明本步骤读取、产生或更新的数据；初始化函数可能通过对象或全局组状态生效，不表示 Python 必有这些返回值。H/I 为隐藏维/专家中间维。</p>`:''}
-function sourceHtml(n,s){const paths=(atlas.callPaths||[]).filter(p=>n?p.nodeIds.includes(n.id):s.id==='init');return `${sourceTools.controls()}${callPathsHtml(paths,sourceTools)}${n?`<h3>本节点源码</h3><p>${esc(n.summary)}</p>${list(n.lesson.read)}${n.sources.map(e=>sourceTools.render(e)).join('')}<p class="evidence-note">◇ 阅读提示 · ● 已有个人笔记 · 完整文件保留原始行号和版权声明。</p>${n.note?`<div class="callout">${esc(n.note)}</div>`:''}`:`<h3>本框架的源码入口</h3><p>选择节点阅读对应原始源码；上方调用链可以逐阶段展开核对。</p>${s.ids.map(id=>jump(id)).join('')}`}`}
+function sourceHtml(n,s){return `${sourceTools.controls()}${n?`<h3>本节点源码</h3><p>${esc(n.summary)}</p>${list(n.lesson.read)}${n.sources.map(e=>sourceTools.render(e)).join('')}<p class="evidence-note">◇ 阅读提示 · ● 已有个人笔记 · 完整文件保留原始行号和版权声明。</p>${n.note?`<div class="callout">${esc(n.note)}</div>`:''}`:`<h3>本框架的源码入口</h3><p>选择节点阅读源码；模块之间的调用路径通过画布上的圆点展开。</p>${s.ids.map(id=>jump(id)).join('')}`}`}
 function renderDetail(){
  sourceTools.flush?.(document.querySelector('#detail'));sourceTools.reset();
+ const trace=(atlas.transitionPaths||[]).find(p=>p.id===state.trace);
+ if(trace){document.querySelector('#detail').innerHTML=`<div class="detail-top"><span class="eyebrow">模块之间 · 调用链</span><h2>${esc(trace.title)}</h2></div><div class="detail-content trace-detail"><details class="trace-notes"><summary>全部源码笔记：导入 / 导出</summary>${sourceTools.controls()}</details>${callPathsHtml([trace],sourceTools)}<div class="detail-bottom"><button id="trace-back">回到本框架导读</button></div></div>`;sourceTools.bind(document.querySelector('#detail'));document.querySelector('#trace-back').onclick=()=>choose(null);return;}
  const s=scene(),n=byId.get(state.selected),l=s.nodeLessons?.[n?.id]||n?.lesson||s.lesson;
  const tabs=[['principle','原理'],['tensor','张量 / 公式'],['code','源码与笔记']];
  document.querySelector('#detail').innerHTML=`<div class="detail-top"><span class="eyebrow">${n?(n.repo==='vllm'?'vLLM · UPSTREAM':'ASCEND · ADAPTER'):'FRAMEWORK GUIDE'}</span><h2>${esc(n?.title||s.name)}</h2>${n?`<code class="detail-symbol">${esc(n.symbol)}</code>`:'<p>先理解目的与数据，再进入具体函数。</p>'}</div><div class="detail-tabs" role="tablist">${tabs.map(([id,title])=>`<button role="tab" aria-selected="${state.tab===id}" data-tab="${id}">${title}</button>`).join('')}</div><div class="detail-content">${['principle','tensor'].includes(state.tab)?lessonHtml(l,state.tab):sourceHtml(n,s)}<div class="detail-bottom"><button id="back-guide">回到本框架导读</button></div></div>`;

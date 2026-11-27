@@ -3,12 +3,14 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import {nodes,versions} from '../features/ep/spec.mjs';
 import {callPath} from '../features/ep/call-path.mjs';
+import {transitionPaths} from '../features/ep/transitions.mjs';
 export const hash=text=>crypto.createHash('sha256').update(text).digest('hex');
 export const cacheName=r=>r.repo+'--'+r.file.replaceAll('/','__');
 export const sourceKey=r=>hash(versions[r.repo].repo+'@'+versions[r.repo].sha+':'+r.file).slice(0,24);
 export function sourceRequests(){
  const refs=nodes.flatMap(n=>[n,...(n.additional||[]).map(a=>({...n,...a}))]);
  for(const g of callPath.groups)for(const e of g.edges)refs.push(e.from,e.to,e.site,...e.support);
+ for(const p of transitionPaths)for(const s of p.steps)refs.push(s.definition,...s.sources);
  return [...new Map(refs.map(r=>[cacheName(r),{repo:r.repo,file:r.file}])).values()].sort((a,b)=>cacheName(a)<cacheName(b)?-1:cacheName(a)>cacheName(b)?1:0);
 }
 export function readSource(cache,r){return fs.readFileSync(path.join(cache,cacheName(r)),'utf8').replaceAll('\r\n','\n')}

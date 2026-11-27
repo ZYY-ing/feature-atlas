@@ -22,6 +22,8 @@ EP 数据由 `tools/generate.mjs` 从固定源码缓存提取。`npm run sources
 
 调用路径采用 `callPaths[].groups[].edges[]`。每条边含 `from/to/site/support/description/kind`；`kind` 区分 call、dispatch、conditional、return、continuation、inheritance、construct、callback、registration。`site` 是调用点；`support` 是继承/注册等补充证据。阶段先后不能标成 call；工厂内部不同构造动作不能伪装为对象之间互相调用。
 
+上述 `callPaths` 为证据目录，不直接渲染到模块页。`transitions.mjs` 从证据目录组织 `transitionPaths`：`steps` 保存唯一的函数定义、职责和旁边折叠的源码，`links` 按相邻步骤记录箭头类型与说明，数量必须为步骤数减一。每条路径内同一函数只画一次；沿栈返回明确标为 return。场景的 `connectors = [{path,from,to,caption}]` 在模块连线上生成可点击圆点；`path` 对应路径 ID。通用画布和右侧流程图不硬编码 EP 函数名。当前只启用 groups→factory 这一处入口。
+
 `sourceFiles` 索引到按完整 SHA 提取的全文 JSON，源码阅读器按需加载。`app/source-reader.js` 和 `notes-store.js` 不依赖 EP 类名；新特性使用相同源码/笔记协议即可复用。个人笔记不写入构建产物，源码版本不匹配的导入会被拒绝。
 
 更新源码版本：先修改固定 SHA 和特性锚点，从官方仓库取得该 SHA 的源码，人工核实分支和调用关系后运行 `node tools/generate.mjs /verified/cache --write-source-lock` 更新全文锁文件，再执行 `npm run reproduce`。此显式选项用于维护者核对后的升级，不应在 CI 中自动重写锁文件掩盖差异。

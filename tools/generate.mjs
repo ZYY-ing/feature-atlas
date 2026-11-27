@@ -5,6 +5,7 @@ import {lessons,sceneLessons} from '../features/ep/learning.mjs';
 import {applyUnifiedExamples} from '../features/ep/unified-examples.mjs';
 import {applyContracts} from '../features/ep/contracts.mjs';
 import {callPath} from '../features/ep/call-path.mjs';
+import {transitionPaths} from '../features/ep/transitions.mjs';
 import {extract as extractSource,sourceRequests,readSource,sourceKey,cacheName,hash} from './source-data.mjs';
 applyUnifiedExamples(lessons,sceneLessons,scenes);
 applyContracts(nodes,lessons,sceneLessons,scenes);
@@ -25,5 +26,6 @@ const sourceFiles={};
 fs.mkdirSync('features/ep/generated/sources',{recursive:true});
 for(const r of requests){const key=sourceKey(r),text=readSource(cache,r),meta={key,repo:versions[r.repo].repo,sha:versions[r.repo].sha,file:r.file,hash:hash(text),lineCount:text.split('\n').length};sourceFiles[key]={...meta,url:'sources/'+key+'.json'};fs.writeFileSync('features/ep/generated/sources/'+key+'.json',JSON.stringify({...meta,code:text})+'\n');}
 const pathData={...callPath,groups:callPath.groups.map(g=>({...g,edges:g.edges.map(e=>({...e,from:extract(e.from),to:extract(e.to),site:extract(e.site),support:e.support.map(extract)}))}))};
-fs.writeFileSync('features/ep/generated/atlas.json',JSON.stringify({manifest,nodes:generated,scenes,sourceFiles,callPaths:[pathData]},null,2)+'\n');
+const transitions=transitionPaths.map(p=>({...p,steps:p.steps.map(s=>({...s,definition:extract(s.definition),sources:s.sources.map(extract)}))}));
+fs.writeFileSync('features/ep/generated/atlas.json',JSON.stringify({manifest,nodes:generated,scenes,sourceFiles,callPaths:[pathData],transitionPaths:transitions},null,2)+'\n');
 console.log(`Indexed ${generated.length} nodes, ${scenes.length} frameworks with original source lines.`);

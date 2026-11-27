@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import {NotesStore,notesKey} from '../app/notes-store.js';
+import {callPathsHtml} from '../app/call-path.js';
 const a=JSON.parse(fs.readFileSync('features/ep/generated/atlas.json','utf8'));
 const sha=s=>crypto.createHash('sha256').update(s).digest('hex');
 function full(e){const m=a.sourceFiles[e.sourceKey];assert.ok(m,e.file);const f=JSON.parse(fs.readFileSync('features/ep/generated/'+m.url,'utf8'));assert.equal(sha(f.code),m.hash);return f.code.split('\n')}
@@ -26,11 +27,30 @@ test('EP construction returns to orchestrator; factory is reached through model 
  assert.ok(edges.some(e=>e.kind==='inheritance'&&e.from.file.includes('worker/v2/')&&e.to.file.includes('worker/gpu/')));
  for(const e of edges.filter(e=>e.kind==='call'))assert.ok(!/^\s*def /.test(full(e.site)[e.site.line-1]));
 });
+test('one connector opens a continuous chain with unique functions and verified source folds',()=>{
+ const scene=a.scenes.find(s=>s.id==='init');assert.equal(scene.connectors.length,1);
+ assert.deepEqual([scene.connectors[0].from,scene.connectors[0].to],['groups','factory']);
+ const p=a.transitionPaths.find(p=>p.id===scene.connectors[0].path);assert.ok(p);assert.equal(p.links.length,p.steps.length-1);
+ const symbols=p.steps.map(s=>s.definition.symbol);assert.equal(new Set(symbols).size,symbols.length);
+ assert.equal(symbols[0],'initialize_model_parallel');assert.equal(symbols.at(-1),'FusedMoEFactory');
+ assert.equal(p.links[0].kind,'return');
+ for(const s of p.steps){evidence(s.definition);for(const e of s.sources)evidence(e)}
+ const html=callPathsHtml([p],{render:()=>'<div>source</div>'});
+ assert.equal((html.match(/class="trace-function"/g)||[]).length,p.steps.length);
+ assert.equal((html.match(/class="trace-arrow /g)||[]).length,p.links.length);
+ assert.equal((html.match(/class="trace-code"/g)||[]).length,p.steps.length);
+});
 const memory=()=>{const m=new Map();return {getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,v)}};
 const meta=Object.values(a.sourceFiles)[0];const code=JSON.parse(fs.readFileSync('features/ep/generated/'+meta.url,'utf8')).code.split('\n');
 test('notes persist separately from source, survive reload, export/import, and delete cleanly',()=>{
  const storage=memory(),s=new NotesStore(storage,a.sourceFiles),before=code[0];s.save(meta,1,code[0],'这行的解释 <script>');assert.equal(new NotesStore(storage,a.sourceFiles).get(meta,1),'这行的解释 <script>');assert.equal(code[0],before);
  const restored=new NotesStore(memory(),a.sourceFiles);assert.equal(restored.import(s.export()),1);assert.equal(restored.get(meta,1),'这行的解释 <script>');restored.save(meta,1,code[0],'');assert.equal(restored.get(meta,1),'');
+});
+test('one note import restores annotations for different module source files',()=>{
+ const metas=['groups','factory'].map(id=>a.sourceFiles[a.nodes.find(n=>n.id===id).evidence.sourceKey]);
+ const s=new NotesStore(memory(),a.sourceFiles);for(const [i,f] of metas.entries()){const lines=JSON.parse(fs.readFileSync('features/ep/generated/'+f.url,'utf8')).code.split('\n');s.save(f,1,lines[0],'模块笔记 '+i)}
+ const restored=new NotesStore(memory(),a.sourceFiles);assert.equal(restored.import(s.export()),2);
+ assert.equal(restored.get(metas[0],1),'模块笔记 0');assert.equal(restored.get(metas[1],1),'模块笔记 1');
 });
 test('a mismatched note import is rejected before any existing note is changed',()=>{
  const s=new NotesStore(memory(),a.sourceFiles);s.save(meta,1,code[0],'原有笔记');const good=JSON.parse(s.export()).notes[0];const bad={...good,sha:'0'.repeat(40)};

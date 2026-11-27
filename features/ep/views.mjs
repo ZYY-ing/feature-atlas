@@ -6,7 +6,7 @@ scene('overview','先看全局：EP 在做什么？','先确定专家权重的�
 ],[['factory','context','部署后'],['context','runner','本批策略'],['runner','control','执行负载'],['control','runner','后续批次的新布局']],{columns:3,modules:{factory:{title:'部署与专家归属',subtitle:'建通信组 · 分配专家 · 加载权重',view:'init'},context:{title:'每批次上下文',subtitle:'统一选择通信类型与批次元数据',view:'batch'},runner:{title:'一次 MoE 前向',subtitle:'路由 · 分发 · 专家计算 · 回传',view:'forward'},control:{title:'EPLB 反馈闭环',subtitle:'采样 · 规划 · 迁移 · 安全提交',view:'eplb'},'sp-shard':{title:'SP：Token 属于谁',subtitle:'前向布局选项：每卡持有哪几行',view:'sp'},'offload-check':{title:'专家 Offload',subtitle:'独立部署路径：按需加载权重',view:'offload'}},notes:['实线为阶段 / 数据关系，虚线为反馈。SP 是前向布局选项；本快照的 Offload 不支持与 EP/EPLB 同开。']}),
 scene('init','部署与专家归属','只看启动阶段：通信组决定谁协作，expert_map 决定谁存专家，weight_loader 才把 checkpoint 写进设备存储。',[
  ['groups'],['factory','registration'],['placement'],['weights'],['setup']
-],[['groups','factory','建组后进入加载阶段'],['registration','factory','OOT 注册 / 工厂适配'],['factory','placement','构造权重拥有者'],['placement','weights','全局 ID 到本地槽位'],['factory','setup','Runner 初始化时注册']],{parent:'overview',notes:['建组完成后先返回启动器，再经模型加载器和模型构造进入工厂；完整路径见右侧“源码与笔记”。','factory → setup 是对象构造中的另一项工作；图中的垂直排列不是权重加载与通信注册的严格先后保证。']}),
+],[['groups','factory','建组后进入加载阶段'],['registration','factory','OOT 注册 / 工厂适配'],['factory','placement','构造权重拥有者'],['placement','weights','全局 ID 到本地槽位'],['factory','setup','Runner 初始化时注册']],{parent:'overview',notes:['点击建组与工厂之间的圆点，右侧展开这两个模块之间的调用链。模块自身只显示原理、源码与笔记。','factory → setup 是对象构造中的另一项工作；图中的垂直排列不是权重加载与通信注册的严格先后保证。']}),
 scene('batch','每批次的执行上下文','这一层负责让同组 rank 对本批用哪种通信达成一致；它发生在具体 MoE 层执行之前。',[
  ['context'],['select'],['routed']
 ],[['context','select','内部调用选择函数'],['select','routed','枚举随 context 进入每层']],{parent:'overview',notes:['初始化创建实现对象；每批选类型；每层再按 moe_config 取匹配实例。三者不能合成一次 select 调用。']}),
@@ -39,6 +39,9 @@ scene('offload','专家 Offload：管理驻留工作集','本快照的独立单 
 ];
 // The computation branches are children of the routed-experts framework.
 for(const id of ['routing','comm'])scenes.find(s=>s.id===id).parent='routed';
+scenes.find(s=>s.id==='init').connectors=[
+ {path:'groups-factory',from:'groups',to:'factory',caption:'建组到工厂'}
+];
 scenes.find(s=>s.id==='comm').navLabel='专家通信';
 scenes.find(s=>s.id==='overview').navLabel='总框架';
 scenes.find(s=>s.id==='init').navLabel='部署与加载';
