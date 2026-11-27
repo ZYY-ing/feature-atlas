@@ -13,6 +13,7 @@ const logo='<svg viewBox="0 0 32 32"><rect x="3" y="3" width="10" height="10" rx
 let state={scene:'overview',selected:null,tab:'principle',backend:'ALLTOALL',zoom:1};
 function restore(){const q=new URLSearchParams(location.hash.slice(1));if(scenes.some(s=>s.id===q.get('view')))state.scene=q.get('view');state.selected=byId.has(q.get('node'))?q.get('node'):null;if(['ALLTOALL','ALLGATHER','MC2','FUSED_MC2'].includes(q.get('backend')))state.backend=q.get('backend');if(['principle','tensor','code'].includes(q.get('tab')))state.tab=q.get('tab');}
 restore();
+if(state.selected)document.body.classList.add('detail-open');
 function scene(){const s=scenes.find(s=>s.id===state.scene)||scenes[0];return {...s,...s.variants?.[state.backend]};}
 function urlState(){history.replaceState(null,'',`#view=${state.scene}${state.selected?'&node='+state.selected:''}${scene().variants?'&backend='+state.backend:''}${state.tab!=='principle'?'&tab='+state.tab:''}`)}
 document.body.classList.toggle('dark',localStorage.getItem('feature-atlas-theme')==='dark');
