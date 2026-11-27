@@ -1,0 +1,56 @@
+{
+  "versions": {
+    "vllm": {
+      "repo": "vllm-project/vllm",
+      "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8"
+    },
+    "ascend": {
+      "repo": "vllm-project/vllm-ascend",
+      "sha": "b54afa62e8554caee22715d90ffe6a018d541b42"
+    }
+  },
+  "files": {
+    "ascend--vllm_ascend__ascend_forward_context.py": "24ee5f15e4524e65fb64376fa37c036b60a6c59100220ace6178ce649b1f181d",
+    "ascend--vllm_ascend__distributed__eplb__eplb_state.py": "55d493984906ae242f15a0062473c8954bf760ef9ec93ccacb0e5fde8accc28b",
+    "ascend--vllm_ascend__distributed__eplb__explicit_transfer.py": "d7f41c96f470b54ff4a0d79c6a9a185eb43c0b0d52dc51b8d3e808763c217065",
+    "ascend--vllm_ascend__distributed__eplb__policy__factory.py": "faab64d8b2371d8046ca1f33338e6c3809300718d03ad84ec103ec31ed6b1ece",
+    "ascend--vllm_ascend__distributed__eplb__policy__stair.py": "d8244cd84649a6d778464cc0c3770b186506ad6b963e8845781488d9cb36c951",
+    "ascend--vllm_ascend__distributed__expert_transfer__expert_offload_config.py": "a338991c3656c138379901b834ac19e43aef18f3aada310868141c61fc84105b",
+    "ascend--vllm_ascend__distributed__expert_transfer__expert_offload_manager.py": "7a4b6f234581537267d8a8bb96f7843df3ea9eb738c8117fe27c6d4b1c23f817",
+    "ascend--vllm_ascend__distributed__expert_transfer__expert_offload_method.py": "83c87ec64f3f6f8bfc83ddb43d51bfe12088fb9d71b35c750d2a52b8f20a9137",
+    "ascend--vllm_ascend__models__common__ops__sequence_parallel.py": "73bcf07050bce8b049dd0bbdb0a7504f6eba157a1e97a5033849ef31ef05fcb0",
+    "ascend--vllm_ascend__ops__fused_moe__eplb.py": "d6692c5af987939abe1a3779ce3c19d9907c1ce0109640081325e8479a961814",
+    "ascend--vllm_ascend__ops__fused_moe__fused_moe.py": "9cf091e2d101df796b88cd397e6edc0004622d44ddd974280530958980f5d3f4",
+    "ascend--vllm_ascend__ops__fused_moe__moe_comm_method.py": "ad70f8e1ff69583566f5bef32a5075a7beee4b33aee20cc39a26a9b4bccfa658",
+    "ascend--vllm_ascend__ops__fused_moe__moe_mlp.py": "b47a886e5c22fc6dcf9db539056a9874b68735a215dbb91a04fc8b690b0f10ca",
+    "ascend--vllm_ascend__ops__fused_moe__prepare_finalize.py": "c0601551966a0c2c717a7095368fba95913b3d7f8e715a2ac191dd5db8a03edf",
+    "ascend--vllm_ascend__ops__fused_moe__routed_experts.py": "bb483c678ec16ee00833b7832c6557b95cf6f05eacb09bbf71c450c46f5bd09d",
+    "ascend--vllm_ascend__ops__fused_moe__token_dispatcher.py": "73e5be7f7260a4458408a5fd21f4c1ab664ac4d0455bb6c81cb8cd6d57c29b0a",
+    "ascend--vllm_ascend__ops__register_custom_ops.py": "71a84e7b9cc8274eace1bb5e1752b5b23b763f9d3ecdb14adbb4b7fed40e7d62",
+    "ascend--vllm_ascend__patch__platform__patch_eplb.py": "d82143964cfbb2603fe1708994baed7f44c6d9534712c3f6db54ffbf7374142b",
+    "ascend--vllm_ascend__patch__platform__patch_fused_moe.py": "e6283b16427b73787f01eddbc075bfae93e0620889347e480392c2efd75f1963",
+    "ascend--vllm_ascend__platform.py": "49fe048082b714fb4b851411ba664b3e5c06a5cf7ed58026059748dfce871d0f",
+    "ascend--vllm_ascend__utils.py": "7139e0c039f66a3a913f46c302aaecb4c9ddf40eee365c7cdd83f27ee5dad45e",
+    "ascend--vllm_ascend__worker__v2__eplb.py": "77142af403aa1b5d6a5541d60efc3d535862a4b8453ee71189946f211b34b24f",
+    "ascend--vllm_ascend__worker__v2__model_runner.py": "9a18ebf93e70a1f5ec23a29b782cdfb57bf054f7d7bdf4b4755a8c8fb51098ed",
+    "ascend--vllm_ascend__worker__worker.py": "5ba6e7bc866d2b1f421ff720a31d19d2edd4abb32e19e0ce683f08916ae07bbb",
+    "vllm--vllm__distributed__eplb__async_worker.py": "5427c60a95943222c9bbb5c0f25250c48d1799cbcad18e537d4599153eb4bf77",
+    "vllm--vllm__distributed__eplb__eplb_state.py": "8cc48cf8de72d9278bff1b1d92b4ec17dc7210ef2847e57039fb92f809f97f13",
+    "vllm--vllm__distributed__parallel_state.py": "adcaa1bd113227b008e3ea0736155520b3296f122f034f7ee54a73495599a3ee",
+    "vllm--vllm__model_executor__custom_op.py": "6a73aaf4cc3252120024ac267e098465ad0a5c7d8c2475d0c0bf5f5cd86c180c",
+    "vllm--vllm__model_executor__layers__fused_moe__expert_map_manager.py": "c00b240b4ff48894f653a24c3a24c14cb72ed45b6292c1e975077fa4c02de382",
+    "vllm--vllm__model_executor__layers__fused_moe__layer.py": "d4f904ed74a1145e0bb678fe1be38c6ea8f71544870f761d20898197bedc0356",
+    "vllm--vllm__model_executor__layers__fused_moe__routed_experts.py": "0f30ad0d00b3fd946c3bd708d5b30923209b91ac5908a6f36c505c355b1435ca",
+    "vllm--vllm__model_executor__layers__fused_moe__runner__moe_runner.py": "44ff4bda84db9897da1703beaada559d7c2b5f7943d3c254413a237342c67a22",
+    "vllm--vllm__model_executor__model_loader____init__.py": "e240466f08aa0a35cae3263eb4759302f4701729452792168b098044ca72f0ff",
+    "vllm--vllm__model_executor__model_loader__base_loader.py": "3139ad5e6e5b0acdc0e0e789fe9a6198af7832d6f165cba6a160fc62f630e394",
+    "vllm--vllm__model_executor__model_loader__default_loader.py": "f0e1090244ceb2cea8292e77e2c5d9e3a95dc8ecc3f16020de185084b6c2b306",
+    "vllm--vllm__model_executor__model_loader__utils.py": "3dfcdbb2f8f12c6917d7bbf4c602c218a658ab47c1c986909dda8981f4d877af",
+    "vllm--vllm__model_executor__models__deepseek_v2.py": "d38382ed5d9b152ee11bbaef91e1b112a171b9604b99a457d41093639f1fbec7",
+    "vllm--vllm__model_executor__models__registry.py": "284706e72cf3eb6edf8f92135b92a08975ee392ea72d02d28cbabc8f2b0b5f23",
+    "vllm--vllm__model_executor__models__utils.py": "70419025be48d3fd25b93e0eaba45776ada0e6e9295a97742a7afa6c824650f7",
+    "vllm--vllm__v1__executor__multiproc_executor.py": "f6aa38685fc42b263df5d8c6e0a617e46c7f4841bd97881a1b75fe3925776d7e",
+    "vllm--vllm__v1__worker__gpu__model_runner.py": "50b8ca4107a579fcf9a889c55325624ea7a5c9c120b0bb9f85e37941a854bc72",
+    "vllm--vllm__v1__worker__worker_base.py": "93d692fad4b10639dd680fb1c3a8e9404e5d09faa5aec8ec82d9dca5d89ec7a0"
+  }
+}

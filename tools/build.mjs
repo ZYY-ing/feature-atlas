@@ -1,1 +1,1 @@
-import fs from 'node:fs';fs.mkdirSync('dist',{recursive:true});for(const name of ['index.html','app','features'])fs.cpSync(name,'dist/'+name,{recursive:true});console.log('Built static dist/');
+import fs from 'node:fs';import {exportReview} from './export-review.mjs';fs.mkdirSync('dist',{recursive:true});for(const name of ['index.html','app','features','LICENSES','THIRD_PARTY_NOTICES.md'])fs.cpSync(name,'dist/'+name,{recursive:true});exportReview('dist/review.html');console.log('Built static dist/');

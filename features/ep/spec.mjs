@@ -3,7 +3,7 @@ const a='vllm_ascend/ops/fused_moe/',v='vllm/model_executor/layers/fused_moe/';
 // Each anchor must exist in the pinned source. It selects original lines, never synthesized code.
 const n=(id,title,repo,file,anchor,symbol,summary,input,output,note='')=>({id,title,repo,file,anchor,symbol,summary,input,output,note});
 export const nodes=[
-n('factory','构建 MoE 执行管线','vllm',v+'layer.py','runner = runner_cls(', 'FusedMoEFactory','上游工厂创建 Router、RoutedExperts 和 MoERunner。OOT 可插拔分发让 NPU 接口落到 Ascend 实现。','模型与并行配置','MoERunner 实例','本图未展开插件启动注册全过程。覆盖关系与直接函数调用分开标记。'),
+n('factory','构建 MoE 执行管线','vllm',v+'layer.py','runner = runner_cls(', 'FusedMoEFactory','上游工厂组织 Router、RoutedExperts 和 MoERunner；Ascend 包装可先准备 Router 再传入。OOT 可插拔分发让 NPU 接口落到 Ascend 实现。','模型与并行配置','MoERunner 实例','源码页提供建组到工厂的分段路径；平台补丁、OOT 注册和直接调用分别标记。对象构造之后才由 loader 继续加载 checkpoint。'),
 n('runner','Ascend MoE Runner','ascend',a+'fused_moe.py','result = self._forward_entry(', 'AscendMoERunner.forward','组织输入变换、执行入口、共享与路由结果合并。该快照覆盖了上游 forward，而不是简单调用 super().forward。','hidden_states、router_logits','该层 MoE 输出'),
 n('transform','继承上游输入变换','vllm',v+'runner/moe_runner.py','def apply_routed_input_transform(', 'MoERunner.apply_routed_input_transform','Ascend Runner 使用继承的方法准备 routed/shared 输入，表明跨仓库关系不只是单向调用。','原始 hidden_states','routed 与 shared 输入','这是继承方法调用；并非先执行一遍完整的上游 MoE。'),
 n('routed','路由专家执行入口','ascend',a+'routed_experts.py','prepare_output = moe_comm_method.prepare(', 'AscendRoutedExperts.forward_impl','取得本层通信实例，prepare 输入，选专家后调用量化实现，并在结束时记录负载与恢复布局。','本地 Token 特征、logits','routed_out 与执行事件'),
