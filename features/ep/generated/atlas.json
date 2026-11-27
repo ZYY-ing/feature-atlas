@@ -7132,6 +7132,11 @@
       ],
       "connectors": [
         {
+          "path": "startup-groups",
+          "to": "groups",
+          "caption": "启动到建组"
+        },
+        {
           "path": "groups-factory",
           "from": "groups",
           "to": "factory",
@@ -11392,13 +11397,344 @@
   ],
   "transitionPaths": [
     {
-      "id": "groups-factory",
-      "title": "EP 建组完成 → FusedMoEFactory",
-      "description": "先返回初始化流程，创建 MRv2 runner；再由启动器加载模型，沿模型构造进入 MoE 工厂。",
-      "scope": "普通多进程启动；非 elastic scale-up、非 encoder-only；MRv2；auto/safetensors 的 DefaultModelLoader。前提是 Ascend 平台补丁已加载、普通 NPU 类已注册，模型未显式覆盖 Runner/专家类。模型分支示例为 DeepseekV2ForCausalLM 的 MoE 层。拓扑沿用 DP2/PP2/TP2/PCP1、E8/Top2；模型类名仅用于追源码，不代表所有模型。",
-      "steps": [
+      "id": "startup-groups",
+      "title": "WorkerProc → 建立 EP 通信组",
+      "scope": "普通多进程启动；非 elastic scale-up、非 encoder-only；MRv2；auto/safetensors 的 DefaultModelLoader。前提是 Ascend 平台补丁已加载、普通 NPU 类已注册，模型未显式覆盖 Runner/专家类。模型分支示例为 DeepseekV2ForCausalLM 的 MoE 层。拓扑沿用 DP2/PP2/TP2/PCP1、E8/Top2；模型类名仅用于追源码，不代表所有模型。 本图只追 EP 主路径：新建模型、当前层为 MoE、普通 NPU worker、EP4/E8、无冗余、linear 放置。encoder-only、elastic scale-up、复用已有 model、Dense 层及通用子类适配分支不画出。常规函数返回省略；关键初始化返回和 OOT 绑定明确标注。",
+      "description": "只追 EP 建组：WorkerProc 初始化设备，经 Ascend worker 回到上游建组。保留“已有组只校验”这一相关判断；worker 创建细节在入口源码中。",
+      "nodes": [
         {
-          "id": "ep-groups",
+          "id": "proc",
+          "row": 0,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/v1/executor/multiproc_executor.py",
+            "symbol": "WorkerProc.__init__",
+            "start": 781,
+            "end": 787,
+            "line": 783,
+            "code": "\n    @instrument(span_name=\"Worker init\")\n    def __init__(\n        self,\n        vllm_config: VllmConfig,\n        local_rank: int,\n        rank: int,",
+            "sourceKey": "c4288f441f62ace467c72534",
+            "hash": "b5dc92afea5fb1e4edad732532bc7648cba2595b298baec8ebcd505e0d7239f6",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/executor/multiproc_executor.py#L781-L787"
+          },
+          "purpose": "init_worker 已创建真实 worker，再调用 init_device。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/executor/multiproc_executor.py",
+              "symbol": "WorkerProc.__init__",
+              "start": 805,
+              "end": 811,
+              "line": 807,
+              "code": "            \"shared_worker_lock\": shared_worker_lock,\n        }\n        wrapper.init_worker(all_kwargs)\n        self.worker = wrapper\n\n        self.setup_proc_title_and_log_prefix(\n            enable_ep=vllm_config.parallel_config.enable_expert_parallel",
+              "sourceKey": "c4288f441f62ace467c72534",
+              "hash": "bb7bec8e5125b9c0ea5dcff0e3100a1ffc67e5a4d235de45e3d460518ac84281",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/executor/multiproc_executor.py#L805-L811"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/executor/multiproc_executor.py",
+              "symbol": "WorkerProc.__init__",
+              "start": 813,
+              "end": 821,
+              "line": 815,
+              "code": "\n        # Load model\n        self.worker.init_device()\n        # Update process title now that parallel groups are initialized\n        self.setup_proc_title_and_log_prefix(\n            enable_ep=vllm_config.parallel_config.enable_expert_parallel\n        )\n        if envs.VLLM_ELASTIC_EP_SCALE_UP_LAUNCH:\n            self.worker.elastic_ep_execute(\"load_model\")",
+              "sourceKey": "c4288f441f62ace467c72534",
+              "hash": "95277c9909156c21ad7204a7c5788a06563bceb97c9c9eb85c4f159c5b2a3abb",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/executor/multiproc_executor.py#L813-L821"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/worker/worker_base.py",
+              "symbol": "WorkerWrapperBase.init_worker",
+              "start": 301,
+              "end": 312,
+              "line": 303,
+              "code": "\n    @instrument(span_name=\"Worker init\")\n    def init_worker(self, all_kwargs: list[dict[str, Any]]) -> None:\n        \"\"\"Here we inject some common logic before initializing the worker.\n        Arguments are passed to the worker class constructor.\n        \"\"\"\n        kwargs = all_kwargs[self.rpc_rank]\n\n        vllm_config: VllmConfig | None = kwargs.get(\"vllm_config\")\n        assert vllm_config is not None, (\n            \"vllm_config is required to initialize the worker\"\n        )",
+              "sourceKey": "fc7f2f45fd8499c8c07d8d0b",
+              "hash": "6ec90b21d39dfa8bf4703a56c8df099374b4222cf23b2241f65ea822df0f69ee",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/worker_base.py#L301-L312"
+            }
+          ]
+        },
+        {
+          "id": "wrapper-device",
+          "row": 1,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/v1/worker/worker_base.py",
+            "symbol": "WorkerWrapperBase.init_device",
+            "start": 395,
+            "end": 401,
+            "line": 397,
+            "code": "            self.worker.extend_kv_cache(num_blocks)  # type: ignore\n\n    def init_device(self):\n        assert self.vllm_config is not None\n        with set_current_vllm_config(self.vllm_config):\n            # To make vLLM config available during device initialization\n            self.worker.init_device()  # type: ignore",
+            "sourceKey": "fc7f2f45fd8499c8c07d8d0b",
+            "hash": "770a8f63e0a3985dad2924365aa4e07158cc805b4a417cf177bb539ea0532958",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/worker_base.py#L395-L401"
+          },
+          "purpose": "包装层转发给已经创建的 NPUWorker。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/worker/worker_base.py",
+              "symbol": "WorkerWrapperBase.init_device",
+              "start": 399,
+              "end": 405,
+              "line": 401,
+              "code": "        with set_current_vllm_config(self.vllm_config):\n            # To make vLLM config available during device initialization\n            self.worker.init_device()  # type: ignore\n            hook = getattr(self._worker_extension_cls, \"init_worker_extension\", None)\n            if callable(hook):\n                hook(self.worker)\n",
+              "sourceKey": "fc7f2f45fd8499c8c07d8d0b",
+              "hash": "5a571035cabafc072a58993d165f2dbc993051d56e6c068e9478815d0203d109",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/worker_base.py#L399-L405"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/worker/worker_base.py",
+              "symbol": "WorkerWrapperBase.init_worker",
+              "start": 380,
+              "end": 384,
+              "line": 382,
+              "code": "        with set_current_vllm_config(self.vllm_config):\n            # To make vLLM config available during worker initialization\n            self.worker = worker_class(**kwargs)\n            self._worker_extension_cls = worker_extension_cls\n",
+              "sourceKey": "fc7f2f45fd8499c8c07d8d0b",
+              "hash": "31f8625678abbefcced3c410e9034cefc84dd2e1d38ec211c5e3b589584c15a5",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/worker_base.py#L380-L384"
+            }
+          ]
+        },
+        {
+          "id": "npu-init",
+          "row": 1,
+          "definition": {
+            "repo": "vllm-project/vllm-ascend",
+            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+            "file": "vllm_ascend/worker/worker.py",
+            "symbol": "NPUWorker.init_device",
+            "start": 661,
+            "end": 667,
+            "line": 663,
+            "code": "        return device\n\n    def init_device(self):\n        # NOTE: KEEP device the member of `NPUWorker`, as it will be checked\n        # in ray scenario. see https://github.com/vllm-project/vllm/pull/26845\n        # for more details\n        self.device = self._init_device()",
+            "sourceKey": "54813ef03ea8568b3d2c9ea5",
+            "hash": "59e55f5477e83ef97192782072728b3110191c87f4f1201b541e2738dc3c9e64",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L661-L667"
+          },
+          "purpose": "进入 NPU 初始化。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.init_device",
+              "start": 665,
+              "end": 673,
+              "line": 667,
+              "code": "        # in ray scenario. see https://github.com/vllm-project/vllm/pull/26845\n        # for more details\n        self.device = self._init_device()\n        compilation = get_ascend_config().ascend_compilation_config\n        static_kernel_compilation = \"disabled\"\n        if compilation.enable_static_kernel:\n            static_kernel_compilation = (\n                \"enabled through model compilation\" if compilation.enable_npugraph_ex else \"enabled during graph warmup\"\n            )",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "0c10a037ac12de0016a84f9aa8c1afe42c815356e097f58f7380b95f4c5601f3",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L665-L673"
+            }
+          ]
+        },
+        {
+          "id": "device",
+          "row": 2,
+          "definition": {
+            "repo": "vllm-project/vllm-ascend",
+            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+            "file": "vllm_ascend/worker/worker.py",
+            "symbol": "NPUWorker._init_device",
+            "start": 554,
+            "end": 560,
+            "line": 556,
+            "code": "        return utilization\n\n    def _init_device(self):\n        # vLLM v0.24.0 (PR #45026) removed automatic per-process device\n        # isolation for DP workers. Mirror gpu_worker.py::init_device:\n        # shift self.local_rank by dp_local_rank * tp_pp_world_size so\n        # that each DP group binds to a distinct set of NPUs.",
+            "sourceKey": "54813ef03ea8568b3d2c9ea5",
+            "hash": "08499201148139618112dfe19046c9b743486e8452cf9af98e81e5be84d74637",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L554-L560"
+          },
+          "purpose": "设置设备后进入分布式初始化。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker._init_device",
+              "start": 653,
+              "end": 661,
+              "line": 655,
+              "code": "\n        # Initialize the distributed environment.\n        self._init_worker_distributed_environment()\n        # Set random seed.\n        set_random_seed(self.model_config.seed)\n        # Initialize device properties used by triton kernels.\n        init_device_properties_triton()\n\n        return device",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "14a4fc57915bea56f49c2dd6f02e1f18615689bd7431eb27e74f9ac4727d64dc",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L653-L661"
+            }
+          ]
+        },
+        {
+          "id": "environment",
+          "row": 3,
+          "definition": {
+            "repo": "vllm-project/vllm-ascend",
+            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+            "file": "vllm_ascend/worker/worker.py",
+            "symbol": "NPUWorker._init_worker_distributed_environment",
+            "start": 1402,
+            "end": 1408,
+            "line": 1404,
+            "code": "            self.model_runner._dummy_run(num_tokens, uniform_decode=True, skip_gdn_state_update=True)\n\n    def _init_worker_distributed_environment(self) -> None:\n        \"\"\"Initialize the distributed environment.\"\"\"\n        init_batch_invariance()\n        init_distributed_environment(\n            self.parallel_config.world_size, self.rank, self.distributed_init_method, self.local_rank, \"hccl\"",
+            "sourceKey": "54813ef03ea8568b3d2c9ea5",
+            "hash": "490f7734b678ff63d4e01abc1fe17a84946f19983135d3affe7dc48c1510b0bc",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L1402-L1408"
+          },
+          "purpose": "默认分布式环境就绪后，请求模型并行组。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker._init_worker_distributed_environment",
+              "start": 1416,
+              "end": 1424,
+              "line": 1418,
+              "code": "            group_config.engram_config = None\n        with set_current_vllm_config(group_config):\n            ensure_model_parallel_initialized(\n                self.parallel_config.tensor_parallel_size,\n                self.parallel_config.pipeline_parallel_size,\n                self.parallel_config.prefill_context_parallel_size,\n                self.parallel_config.decode_context_parallel_size,\n            )\n        init_ascend_model_parallel(self.parallel_config, self.vllm_config.engram_config)",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "632d09547eec919a6fe26fe058b6f2db016279b18c62ffe676fc83d7b0bb9f8a",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L1416-L1424"
+            }
+          ]
+        },
+        {
+          "id": "ensure",
+          "row": 4,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/distributed/parallel_state.py",
+            "symbol": "ensure_model_parallel_initialized",
+            "start": 2475,
+            "end": 2481,
+            "line": 2477,
+            "code": "\n\ndef ensure_model_parallel_initialized(\n    tensor_model_parallel_size: int,\n    pipeline_model_parallel_size: int,\n    prefill_context_model_parallel_size: int = 1,\n    decode_context_model_parallel_size: int | None = 1,",
+            "sourceKey": "1a34468ff42ca928b7b0acc7",
+            "hash": "bc529eb0eb1981f6a1d048aba52c3cf452127d10e78eaa3ee4bde45dbea563b4",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2475-L2481"
+          },
+          "purpose": "未初始化则创建；已有组则检查尺寸。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "ensure_model_parallel_initialized",
+              "start": 2491,
+              "end": 2506,
+              "line": 2493,
+              "code": "    else:\n        backend = backend or torch.distributed.get_backend(world_group.device_group)\n    if not model_parallel_is_initialized():\n        initialize_model_parallel(\n            tensor_model_parallel_size,\n            pipeline_model_parallel_size,\n            prefill_context_model_parallel_size,\n            decode_context_model_parallel_size,\n            backend,\n        )\n        return\n\n    assert get_tensor_model_parallel_world_size() == tensor_model_parallel_size, (\n        \"tensor parallel group already initialized, but of unexpected size. \"\n        f\"got: {get_tensor_model_parallel_world_size()=} vs. \"\n        f\"wanted: {tensor_model_parallel_size=}\"",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "47608ea8aa0f2d7f760676e519e81e4b4ce3e0e0df400f1304d03c40399d7dc6",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2491-L2506"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "ensure_model_parallel_initialized",
+              "start": 2501,
+              "end": 2526,
+              "line": 2503,
+              "code": "        return\n\n    assert get_tensor_model_parallel_world_size() == tensor_model_parallel_size, (\n        \"tensor parallel group already initialized, but of unexpected size. \"\n        f\"got: {get_tensor_model_parallel_world_size()=} vs. \"\n        f\"wanted: {tensor_model_parallel_size=}\"\n    )\n    pp_world_size = get_pp_group().world_size\n    assert pp_world_size == pipeline_model_parallel_size, (\n        \"pipeline parallel group already initialized, but of unexpected size. \"\n        f\"got: {pp_world_size=} vs. \"\n        f\"wanted: {pipeline_model_parallel_size=}\"\n    )\n    pcp_world_size = get_pcp_group().world_size\n    assert pcp_world_size == prefill_context_model_parallel_size, (\n        \"prefill context parallel group already initialized, but of unexpected size: \"\n        f\"{pcp_world_size=} vs. \"\n        f\"{prefill_context_model_parallel_size=}\"\n    )\n    dcp_world_size = get_dcp_group().world_size\n    dcp_model_parallel_size = decode_context_model_parallel_size or 1\n    assert dcp_world_size == dcp_model_parallel_size, (\n        \"decode context parallel group already initialized, but of unexpected size: \"\n        f\"{dcp_world_size=} vs. \"\n        f\"{dcp_model_parallel_size=}\"\n    )",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "e9180c4172a70b25cacb81ed4af959be651efc824e3fad37e742ee9355970936",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2501-L2526"
+            }
+          ]
+        },
+        {
+          "id": "ready?",
+          "row": 5,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/distributed/parallel_state.py",
+            "symbol": "ensure_model_parallel_initialized",
+            "start": 2491,
+            "end": 2506,
+            "line": 2493,
+            "code": "    else:\n        backend = backend or torch.distributed.get_backend(world_group.device_group)\n    if not model_parallel_is_initialized():\n        initialize_model_parallel(\n            tensor_model_parallel_size,\n            pipeline_model_parallel_size,\n            prefill_context_model_parallel_size,\n            decode_context_model_parallel_size,\n            backend,\n        )\n        return\n\n    assert get_tensor_model_parallel_world_size() == tensor_model_parallel_size, (\n        \"tensor parallel group already initialized, but of unexpected size. \"\n        f\"got: {get_tensor_model_parallel_world_size()=} vs. \"\n        f\"wanted: {tensor_model_parallel_size=}\"",
+            "sourceKey": "1a34468ff42ca928b7b0acc7",
+            "hash": "47608ea8aa0f2d7f760676e519e81e4b4ce3e0e0df400f1304d03c40399d7dc6",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2491-L2506"
+          },
+          "purpose": "判断 _TP 与 _PP 是否已存在，不是根据专家数量判断。",
+          "type": "decision",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "ensure_model_parallel_initialized",
+              "start": 2491,
+              "end": 2506,
+              "line": 2493,
+              "code": "    else:\n        backend = backend or torch.distributed.get_backend(world_group.device_group)\n    if not model_parallel_is_initialized():\n        initialize_model_parallel(\n            tensor_model_parallel_size,\n            pipeline_model_parallel_size,\n            prefill_context_model_parallel_size,\n            decode_context_model_parallel_size,\n            backend,\n        )\n        return\n\n    assert get_tensor_model_parallel_world_size() == tensor_model_parallel_size, (\n        \"tensor parallel group already initialized, but of unexpected size. \"\n        f\"got: {get_tensor_model_parallel_world_size()=} vs. \"\n        f\"wanted: {tensor_model_parallel_size=}\"",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "47608ea8aa0f2d7f760676e519e81e4b4ce3e0e0df400f1304d03c40399d7dc6",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2491-L2506"
+            }
+          ],
+          "title": "模型并行组已初始化？"
+        },
+        {
+          "id": "checks",
+          "row": 6,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/distributed/parallel_state.py",
+            "symbol": "ensure_model_parallel_initialized",
+            "start": 2501,
+            "end": 2526,
+            "line": 2503,
+            "code": "        return\n\n    assert get_tensor_model_parallel_world_size() == tensor_model_parallel_size, (\n        \"tensor parallel group already initialized, but of unexpected size. \"\n        f\"got: {get_tensor_model_parallel_world_size()=} vs. \"\n        f\"wanted: {tensor_model_parallel_size=}\"\n    )\n    pp_world_size = get_pp_group().world_size\n    assert pp_world_size == pipeline_model_parallel_size, (\n        \"pipeline parallel group already initialized, but of unexpected size. \"\n        f\"got: {pp_world_size=} vs. \"\n        f\"wanted: {pipeline_model_parallel_size=}\"\n    )\n    pcp_world_size = get_pcp_group().world_size\n    assert pcp_world_size == prefill_context_model_parallel_size, (\n        \"prefill context parallel group already initialized, but of unexpected size: \"\n        f\"{pcp_world_size=} vs. \"\n        f\"{prefill_context_model_parallel_size=}\"\n    )\n    dcp_world_size = get_dcp_group().world_size\n    dcp_model_parallel_size = decode_context_model_parallel_size or 1\n    assert dcp_world_size == dcp_model_parallel_size, (\n        \"decode context parallel group already initialized, but of unexpected size: \"\n        f\"{dcp_world_size=} vs. \"\n        f\"{dcp_model_parallel_size=}\"\n    )",
+            "sourceKey": "1a34468ff42ca928b7b0acc7",
+            "hash": "e9180c4172a70b25cacb81ed4af959be651efc824e3fad37e742ee9355970936",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2501-L2526"
+          },
+          "purpose": "只检查 TP/PP/PCP/DCP 大小，不重新建组。",
+          "type": "operation",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "ensure_model_parallel_initialized",
+              "start": 2501,
+              "end": 2526,
+              "line": 2503,
+              "code": "        return\n\n    assert get_tensor_model_parallel_world_size() == tensor_model_parallel_size, (\n        \"tensor parallel group already initialized, but of unexpected size. \"\n        f\"got: {get_tensor_model_parallel_world_size()=} vs. \"\n        f\"wanted: {tensor_model_parallel_size=}\"\n    )\n    pp_world_size = get_pp_group().world_size\n    assert pp_world_size == pipeline_model_parallel_size, (\n        \"pipeline parallel group already initialized, but of unexpected size. \"\n        f\"got: {pp_world_size=} vs. \"\n        f\"wanted: {pipeline_model_parallel_size=}\"\n    )\n    pcp_world_size = get_pcp_group().world_size\n    assert pcp_world_size == prefill_context_model_parallel_size, (\n        \"prefill context parallel group already initialized, but of unexpected size: \"\n        f\"{pcp_world_size=} vs. \"\n        f\"{prefill_context_model_parallel_size=}\"\n    )\n    dcp_world_size = get_dcp_group().world_size\n    dcp_model_parallel_size = decode_context_model_parallel_size or 1\n    assert dcp_world_size == dcp_model_parallel_size, (\n        \"decode context parallel group already initialized, but of unexpected size: \"\n        f\"{dcp_world_size=} vs. \"\n        f\"{dcp_model_parallel_size=}\"\n    )",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "e9180c4172a70b25cacb81ed4af959be651efc824e3fad37e742ee9355970936",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2501-L2526"
+            }
+          ],
+          "title": "校验已有组",
+          "slot": [
+            4,
+            3
+          ]
+        },
+        {
+          "id": "initialize",
+          "row": 7,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -11412,7 +11748,77 @@
             "hash": "5ba7cf6a1952705a687068b834957c94d2ccad720eed2d3d286f3939269209d0",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2129-L2135"
           },
-          "purpose": "EP 通信组已经建立；这个函数不调用模型工厂。",
+          "purpose": "本图只追 MoE 模型的 EP 创建部分。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "initialize_model_parallel",
+              "start": 2399,
+              "end": 2432,
+              "line": 2401,
+              "code": "\n    global _EP\n    assert _EP is None, \"expert parallel group is already initialized\"\n    # Don't create EP group for dense models.\n    if config.model_config is None or config.model_config.is_moe:\n        group_ranks = (\n            all_ranks.transpose(1, 2)\n            .reshape(\n                -1,\n                data_parallel_size\n                * prefill_context_model_parallel_size\n                * tensor_model_parallel_size,\n            )\n            .unbind(0)\n        )\n        group_ranks = [x.tolist() for x in group_ranks]\n        use_all2all = parallel_config.use_all2all\n        if enable_elastic_ep:\n            with _elastic_join_warmup_ctx():\n                _EP = _init_stateless_group(\n                    group_ranks,\n                    \"ep\",\n                    parallel_config.data_parallel_master_ip,\n                    backend,\n                    coord_store=coord_store,\n                    use_all2all=use_all2all,\n                )\n        else:\n            _EP = init_model_parallel_group(\n                group_ranks,\n                get_world_group().local_rank,\n                backend,\n                group_name=\"ep\",\n                use_all2all=use_all2all,",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "21284026a1d87aaa957b2d91a6903d130929d577e9b30ffb8f6e89c197fac6d6",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2399-L2432"
+            }
+          ]
+        },
+        {
+          "id": "members",
+          "row": 8,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/distributed/parallel_state.py",
+            "symbol": "initialize_model_parallel",
+            "start": 2399,
+            "end": 2416,
+            "line": 2401,
+            "code": "\n    global _EP\n    assert _EP is None, \"expert parallel group is already initialized\"\n    # Don't create EP group for dense models.\n    if config.model_config is None or config.model_config.is_moe:\n        group_ranks = (\n            all_ranks.transpose(1, 2)\n            .reshape(\n                -1,\n                data_parallel_size\n                * prefill_context_model_parallel_size\n                * tensor_model_parallel_size,\n            )\n            .unbind(0)\n        )\n        group_ranks = [x.tolist() for x in group_ranks]\n        use_all2all = parallel_config.use_all2all\n        if enable_elastic_ep:",
+            "sourceKey": "1a34468ff42ca928b7b0acc7",
+            "hash": "075bddddfd7a3645c332d39f23c85116b82551c126e6967534241b450cc0cdcc",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2399-L2416"
+          },
+          "purpose": "固定 PP，组合 DP×PCP×TP；统一示例得到 [0,1,4,5]。",
+          "type": "operation",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "initialize_model_parallel",
+              "start": 2399,
+              "end": 2416,
+              "line": 2401,
+              "code": "\n    global _EP\n    assert _EP is None, \"expert parallel group is already initialized\"\n    # Don't create EP group for dense models.\n    if config.model_config is None or config.model_config.is_moe:\n        group_ranks = (\n            all_ranks.transpose(1, 2)\n            .reshape(\n                -1,\n                data_parallel_size\n                * prefill_context_model_parallel_size\n                * tensor_model_parallel_size,\n            )\n            .unbind(0)\n        )\n        group_ranks = [x.tolist() for x in group_ranks]\n        use_all2all = parallel_config.use_all2all\n        if enable_elastic_ep:",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "075bddddfd7a3645c332d39f23c85116b82551c126e6967534241b450cc0cdcc",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2399-L2416"
+            }
+          ],
+          "title": "计算 EP 成员"
+        },
+        {
+          "id": "make-group",
+          "row": 9,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/distributed/parallel_state.py",
+            "symbol": "init_model_parallel_group",
+            "start": 1537,
+            "end": 1548,
+            "line": 1539,
+            "code": "\n\ndef init_model_parallel_group(\n    group_ranks: list[list[int]],\n    local_rank: int,\n    backend: str,\n    use_message_queue_broadcaster: bool = False,\n    group_name: str | None = None,\n    use_device_communicator: bool = True,\n    use_all2all: bool = False,\n) -> GroupCoordinator:\n    return GroupCoordinator(",
+            "sourceKey": "1a34468ff42ca928b7b0acc7",
+            "hash": "6b885f2de71937390dc61ca29494532009ffcf18ccbb52722bd9223fc0c2c87c",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L1537-L1548"
+          },
+          "purpose": "创建 GroupCoordinator。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -11427,6 +11833,352 @@
               "hash": "f5f91ab461e68a5013a98c0d4c89b45e9f490f81b9ee737ab88db5315797365c",
               "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2425-L2433"
             },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "init_model_parallel_group",
+              "start": 1537,
+              "end": 1548,
+              "line": 1539,
+              "code": "\n\ndef init_model_parallel_group(\n    group_ranks: list[list[int]],\n    local_rank: int,\n    backend: str,\n    use_message_queue_broadcaster: bool = False,\n    group_name: str | None = None,\n    use_device_communicator: bool = True,\n    use_all2all: bool = False,\n) -> GroupCoordinator:\n    return GroupCoordinator(",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "6b885f2de71937390dc61ca29494532009ffcf18ccbb52722bd9223fc0c2c87c",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L1537-L1548"
+            }
+          ]
+        },
+        {
+          "id": "ep",
+          "row": 10,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/distributed/parallel_state.py",
+            "symbol": "initialize_model_parallel",
+            "start": 2425,
+            "end": 2433,
+            "line": 2427,
+            "code": "                )\n        else:\n            _EP = init_model_parallel_group(\n                group_ranks,\n                get_world_group().local_rank,\n                backend,\n                group_name=\"ep\",\n                use_all2all=use_all2all,\n            )",
+            "sourceKey": "1a34468ff42ca928b7b0acc7",
+            "hash": "f5f91ab461e68a5013a98c0d4c89b45e9f490f81b9ee737ab88db5315797365c",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2425-L2433"
+          },
+          "purpose": "保存 _EP；global 4 在本组中的 EP rank 为 2。",
+          "type": "state",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "initialize_model_parallel",
+              "start": 2425,
+              "end": 2433,
+              "line": 2427,
+              "code": "                )\n        else:\n            _EP = init_model_parallel_group(\n                group_ranks,\n                get_world_group().local_rank,\n                backend,\n                group_name=\"ep\",\n                use_all2all=use_all2all,\n            )",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "f5f91ab461e68a5013a98c0d4c89b45e9f490f81b9ee737ab88db5315797365c",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2425-L2433"
+            }
+          ],
+          "title": "EP 通信组可用"
+        }
+      ],
+      "edges": [
+        {
+          "from": "proc",
+          "to": "wrapper-device",
+          "label": "init_device",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/executor/multiproc_executor.py",
+              "symbol": "WorkerProc.__init__",
+              "start": 813,
+              "end": 821,
+              "line": 815,
+              "code": "\n        # Load model\n        self.worker.init_device()\n        # Update process title now that parallel groups are initialized\n        self.setup_proc_title_and_log_prefix(\n            enable_ep=vllm_config.parallel_config.enable_expert_parallel\n        )\n        if envs.VLLM_ELASTIC_EP_SCALE_UP_LAUNCH:\n            self.worker.elastic_ep_execute(\"load_model\")",
+              "sourceKey": "c4288f441f62ace467c72534",
+              "hash": "95277c9909156c21ad7204a7c5788a06563bceb97c9c9eb85c4f159c5b2a3abb",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/executor/multiproc_executor.py#L813-L821"
+            }
+          ]
+        },
+        {
+          "from": "wrapper-device",
+          "to": "npu-init",
+          "label": "转发",
+          "kind": "dispatch",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/worker/worker_base.py",
+              "symbol": "WorkerWrapperBase.init_device",
+              "start": 399,
+              "end": 405,
+              "line": 401,
+              "code": "        with set_current_vllm_config(self.vllm_config):\n            # To make vLLM config available during device initialization\n            self.worker.init_device()  # type: ignore\n            hook = getattr(self._worker_extension_cls, \"init_worker_extension\", None)\n            if callable(hook):\n                hook(self.worker)\n",
+              "sourceKey": "fc7f2f45fd8499c8c07d8d0b",
+              "hash": "5a571035cabafc072a58993d165f2dbc993051d56e6c068e9478815d0203d109",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/worker_base.py#L399-L405"
+            }
+          ]
+        },
+        {
+          "from": "npu-init",
+          "to": "device",
+          "label": "调用",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.init_device",
+              "start": 665,
+              "end": 673,
+              "line": 667,
+              "code": "        # in ray scenario. see https://github.com/vllm-project/vllm/pull/26845\n        # for more details\n        self.device = self._init_device()\n        compilation = get_ascend_config().ascend_compilation_config\n        static_kernel_compilation = \"disabled\"\n        if compilation.enable_static_kernel:\n            static_kernel_compilation = (\n                \"enabled through model compilation\" if compilation.enable_npugraph_ex else \"enabled during graph warmup\"\n            )",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "0c10a037ac12de0016a84f9aa8c1afe42c815356e097f58f7380b95f4c5601f3",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L665-L673"
+            }
+          ]
+        },
+        {
+          "from": "device",
+          "to": "environment",
+          "label": "调用",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker._init_device",
+              "start": 653,
+              "end": 661,
+              "line": 655,
+              "code": "\n        # Initialize the distributed environment.\n        self._init_worker_distributed_environment()\n        # Set random seed.\n        set_random_seed(self.model_config.seed)\n        # Initialize device properties used by triton kernels.\n        init_device_properties_triton()\n\n        return device",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "14a4fc57915bea56f49c2dd6f02e1f18615689bd7431eb27e74f9ac4727d64dc",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L653-L661"
+            }
+          ]
+        },
+        {
+          "from": "environment",
+          "to": "ensure",
+          "label": "请求建组",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker._init_worker_distributed_environment",
+              "start": 1416,
+              "end": 1424,
+              "line": 1418,
+              "code": "            group_config.engram_config = None\n        with set_current_vllm_config(group_config):\n            ensure_model_parallel_initialized(\n                self.parallel_config.tensor_parallel_size,\n                self.parallel_config.pipeline_parallel_size,\n                self.parallel_config.prefill_context_parallel_size,\n                self.parallel_config.decode_context_parallel_size,\n            )\n        init_ascend_model_parallel(self.parallel_config, self.vllm_config.engram_config)",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "632d09547eec919a6fe26fe058b6f2db016279b18c62ffe676fc83d7b0bb9f8a",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L1416-L1424"
+            }
+          ]
+        },
+        {
+          "from": "ensure",
+          "to": "ready?",
+          "label": "判断",
+          "kind": "flow",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "ensure_model_parallel_initialized",
+              "start": 2491,
+              "end": 2506,
+              "line": 2493,
+              "code": "    else:\n        backend = backend or torch.distributed.get_backend(world_group.device_group)\n    if not model_parallel_is_initialized():\n        initialize_model_parallel(\n            tensor_model_parallel_size,\n            pipeline_model_parallel_size,\n            prefill_context_model_parallel_size,\n            decode_context_model_parallel_size,\n            backend,\n        )\n        return\n\n    assert get_tensor_model_parallel_world_size() == tensor_model_parallel_size, (\n        \"tensor parallel group already initialized, but of unexpected size. \"\n        f\"got: {get_tensor_model_parallel_world_size()=} vs. \"\n        f\"wanted: {tensor_model_parallel_size=}\"",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "47608ea8aa0f2d7f760676e519e81e4b4ce3e0e0df400f1304d03c40399d7dc6",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2491-L2506"
+            }
+          ]
+        },
+        {
+          "from": "ready?",
+          "to": "checks",
+          "label": "是",
+          "kind": "conditional",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "ensure_model_parallel_initialized",
+              "start": 2501,
+              "end": 2526,
+              "line": 2503,
+              "code": "        return\n\n    assert get_tensor_model_parallel_world_size() == tensor_model_parallel_size, (\n        \"tensor parallel group already initialized, but of unexpected size. \"\n        f\"got: {get_tensor_model_parallel_world_size()=} vs. \"\n        f\"wanted: {tensor_model_parallel_size=}\"\n    )\n    pp_world_size = get_pp_group().world_size\n    assert pp_world_size == pipeline_model_parallel_size, (\n        \"pipeline parallel group already initialized, but of unexpected size. \"\n        f\"got: {pp_world_size=} vs. \"\n        f\"wanted: {pipeline_model_parallel_size=}\"\n    )\n    pcp_world_size = get_pcp_group().world_size\n    assert pcp_world_size == prefill_context_model_parallel_size, (\n        \"prefill context parallel group already initialized, but of unexpected size: \"\n        f\"{pcp_world_size=} vs. \"\n        f\"{prefill_context_model_parallel_size=}\"\n    )\n    dcp_world_size = get_dcp_group().world_size\n    dcp_model_parallel_size = decode_context_model_parallel_size or 1\n    assert dcp_world_size == dcp_model_parallel_size, (\n        \"decode context parallel group already initialized, but of unexpected size: \"\n        f\"{dcp_world_size=} vs. \"\n        f\"{dcp_model_parallel_size=}\"\n    )",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "e9180c4172a70b25cacb81ed4af959be651efc824e3fad37e742ee9355970936",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2501-L2526"
+            }
+          ]
+        },
+        {
+          "from": "ready?",
+          "to": "initialize",
+          "label": "否",
+          "kind": "conditional",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "ensure_model_parallel_initialized",
+              "start": 2492,
+              "end": 2500,
+              "line": 2494,
+              "code": "        backend = backend or torch.distributed.get_backend(world_group.device_group)\n    if not model_parallel_is_initialized():\n        initialize_model_parallel(\n            tensor_model_parallel_size,\n            pipeline_model_parallel_size,\n            prefill_context_model_parallel_size,\n            decode_context_model_parallel_size,\n            backend,\n        )",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "897ad3b70b09152095e57ac662865ab5fbf28495d00041e2e4f288720d57d77e",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2492-L2500"
+            }
+          ],
+          "side": "left"
+        },
+        {
+          "from": "initialize",
+          "to": "members",
+          "label": "EP 分支",
+          "kind": "flow",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "initialize_model_parallel",
+              "start": 2401,
+              "end": 2414,
+              "line": 2403,
+              "code": "    assert _EP is None, \"expert parallel group is already initialized\"\n    # Don't create EP group for dense models.\n    if config.model_config is None or config.model_config.is_moe:\n        group_ranks = (\n            all_ranks.transpose(1, 2)\n            .reshape(\n                -1,\n                data_parallel_size\n                * prefill_context_model_parallel_size\n                * tensor_model_parallel_size,\n            )\n            .unbind(0)\n        )\n        group_ranks = [x.tolist() for x in group_ranks]",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "c4da9c9475ce5725e3312956fb25fdf47c8a0c9b374000a68be7f9327df51561",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2401-L2414"
+            }
+          ]
+        },
+        {
+          "from": "members",
+          "to": "make-group",
+          "label": "创建组",
+          "kind": "flow",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "initialize_model_parallel",
+              "start": 2425,
+              "end": 2433,
+              "line": 2427,
+              "code": "                )\n        else:\n            _EP = init_model_parallel_group(\n                group_ranks,\n                get_world_group().local_rank,\n                backend,\n                group_name=\"ep\",\n                use_all2all=use_all2all,\n            )",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "f5f91ab461e68a5013a98c0d4c89b45e9f490f81b9ee737ab88db5315797365c",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2425-L2433"
+            }
+          ]
+        },
+        {
+          "from": "make-group",
+          "to": "ep",
+          "label": "保存 _EP",
+          "kind": "flow",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "initialize_model_parallel",
+              "start": 2425,
+              "end": 2433,
+              "line": 2427,
+              "code": "                )\n        else:\n            _EP = init_model_parallel_group(\n                group_ranks,\n                get_world_group().local_rank,\n                backend,\n                group_name=\"ep\",\n                use_all2all=use_all2all,\n            )",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "f5f91ab461e68a5013a98c0d4c89b45e9f490f81b9ee737ab88db5315797365c",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2425-L2433"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "groups-factory",
+      "title": "EP 建组完成 → MoE 执行管线",
+      "scope": "普通多进程启动；非 elastic scale-up、非 encoder-only；MRv2；auto/safetensors 的 DefaultModelLoader。前提是 Ascend 平台补丁已加载、普通 NPU 类已注册，模型未显式覆盖 Runner/专家类。模型分支示例为 DeepseekV2ForCausalLM 的 MoE 层。拓扑沿用 DP2/PP2/TP2/PCP1、E8/Top2；模型类名仅用于追源码，不代表所有模型。 本图只追 EP 主路径：新建模型、当前层为 MoE、普通 NPU worker、EP4/E8、无冗余、linear 放置。encoder-only、elastic scale-up、复用已有 model、Dense 层及通用子类适配分支不画出。常规函数返回省略；关键初始化返回和 OOT 绑定明确标注。",
+      "description": "只保留当前 MoE 层的 EP 主路径：初始化返回 → 加载/构造模型 → Ascend 工厂接入 → 专家归属、参数和通信管线。没有画出的通用分支可在源码中查看。",
+      "nodes": [
+        {
+          "id": "ep",
+          "row": 0,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/distributed/parallel_state.py",
+            "symbol": "initialize_model_parallel",
+            "start": 2425,
+            "end": 2433,
+            "line": 2427,
+            "code": "                )\n        else:\n            _EP = init_model_parallel_group(\n                group_ranks,\n                get_world_group().local_rank,\n                backend,\n                group_name=\"ep\",\n                use_all2all=use_all2all,\n            )",
+            "sourceKey": "1a34468ff42ca928b7b0acc7",
+            "hash": "f5f91ab461e68a5013a98c0d4c89b45e9f490f81b9ee737ab88db5315797365c",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2425-L2433"
+          },
+          "purpose": "EP 组已建立；先沿调用栈返回 init_device。",
+          "type": "state",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/distributed/parallel_state.py",
+              "symbol": "initialize_model_parallel",
+              "start": 2425,
+              "end": 2433,
+              "line": 2427,
+              "code": "                )\n        else:\n            _EP = init_model_parallel_group(\n                group_ranks,\n                get_world_group().local_rank,\n                backend,\n                group_name=\"ep\",\n                use_all2all=use_all2all,\n            )",
+              "sourceKey": "1a34468ff42ca928b7b0acc7",
+              "hash": "f5f91ab461e68a5013a98c0d4c89b45e9f490f81b9ee737ab88db5315797365c",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2425-L2433"
+            }
+          ],
+          "title": "EP 通信组已建立"
+        },
+        {
+          "id": "npu-init",
+          "row": 0,
+          "definition": {
+            "repo": "vllm-project/vllm-ascend",
+            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+            "file": "vllm_ascend/worker/worker.py",
+            "symbol": "NPUWorker.init_device",
+            "start": 661,
+            "end": 667,
+            "line": 663,
+            "code": "        return device\n\n    def init_device(self):\n        # NOTE: KEEP device the member of `NPUWorker`, as it will be checked\n        # in ray scenario. see https://github.com/vllm-project/vllm/pull/26845\n        # for more details\n        self.device = self._init_device()",
+            "sourceKey": "54813ef03ea8568b3d2c9ea5",
+            "hash": "59e55f5477e83ef97192782072728b3110191c87f4f1201b541e2738dc3c9e64",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L661-L667"
+          },
+          "purpose": "建组返回后继续创建 runner。",
+          "type": "function",
+          "sources": [
             {
               "repo": "vllm-project/vllm-ascend",
               "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
@@ -11444,64 +12196,6 @@
               "repo": "vllm-project/vllm-ascend",
               "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
               "file": "vllm_ascend/worker/worker.py",
-              "symbol": "NPUWorker._init_device",
-              "start": 653,
-              "end": 661,
-              "line": 655,
-              "code": "\n        # Initialize the distributed environment.\n        self._init_worker_distributed_environment()\n        # Set random seed.\n        set_random_seed(self.model_config.seed)\n        # Initialize device properties used by triton kernels.\n        init_device_properties_triton()\n\n        return device",
-              "sourceKey": "54813ef03ea8568b3d2c9ea5",
-              "hash": "14a4fc57915bea56f49c2dd6f02e1f18615689bd7431eb27e74f9ac4727d64dc",
-              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L653-L661"
-            },
-            {
-              "repo": "vllm-project/vllm-ascend",
-              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
-              "file": "vllm_ascend/worker/worker.py",
-              "symbol": "NPUWorker._init_worker_distributed_environment",
-              "start": 1416,
-              "end": 1424,
-              "line": 1418,
-              "code": "            group_config.engram_config = None\n        with set_current_vllm_config(group_config):\n            ensure_model_parallel_initialized(\n                self.parallel_config.tensor_parallel_size,\n                self.parallel_config.pipeline_parallel_size,\n                self.parallel_config.prefill_context_parallel_size,\n                self.parallel_config.decode_context_parallel_size,\n            )\n        init_ascend_model_parallel(self.parallel_config, self.vllm_config.engram_config)",
-              "sourceKey": "54813ef03ea8568b3d2c9ea5",
-              "hash": "632d09547eec919a6fe26fe058b6f2db016279b18c62ffe676fc83d7b0bb9f8a",
-              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L1416-L1424"
-            },
-            {
-              "repo": "vllm-project/vllm",
-              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
-              "file": "vllm/distributed/parallel_state.py",
-              "symbol": "ensure_model_parallel_initialized",
-              "start": 2492,
-              "end": 2500,
-              "line": 2494,
-              "code": "        backend = backend or torch.distributed.get_backend(world_group.device_group)\n    if not model_parallel_is_initialized():\n        initialize_model_parallel(\n            tensor_model_parallel_size,\n            pipeline_model_parallel_size,\n            prefill_context_model_parallel_size,\n            decode_context_model_parallel_size,\n            backend,\n        )",
-              "sourceKey": "1a34468ff42ca928b7b0acc7",
-              "hash": "897ad3b70b09152095e57ac662865ab5fbf28495d00041e2e4f288720d57d77e",
-              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/distributed/parallel_state.py#L2492-L2500"
-            }
-          ]
-        },
-        {
-          "id": "npu-init",
-          "definition": {
-            "repo": "vllm-project/vllm-ascend",
-            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
-            "file": "vllm_ascend/worker/worker.py",
-            "symbol": "NPUWorker.init_device",
-            "start": 661,
-            "end": 667,
-            "line": 663,
-            "code": "        return device\n\n    def init_device(self):\n        # NOTE: KEEP device the member of `NPUWorker`, as it will be checked\n        # in ray scenario. see https://github.com/vllm-project/vllm/pull/26845\n        # for more details\n        self.device = self._init_device()",
-            "sourceKey": "54813ef03ea8568b3d2c9ea5",
-            "hash": "59e55f5477e83ef97192782072728b3110191c87f4f1201b541e2738dc3c9e64",
-            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L661-L667"
-          },
-          "purpose": "建组调用栈返回后，继续初始化 workspace 和 runner。",
-          "sources": [
-            {
-              "repo": "vllm-project/vllm-ascend",
-              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
-              "file": "vllm_ascend/worker/worker.py",
               "symbol": "NPUWorker.init_device",
               "start": 684,
               "end": 687,
@@ -11515,6 +12209,7 @@
         },
         {
           "id": "workspace",
+          "row": 1,
           "definition": {
             "repo": "vllm-project/vllm-ascend",
             "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
@@ -11528,7 +12223,8 @@
             "hash": "e7180136a754f9a04be7c004bd139b2f69e33693ecf4a7c51439d4411dc73560",
             "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L686-L692"
           },
-          "purpose": "创建 workspace，并保存即将构造的 model runner。",
+          "purpose": "保存后续 load_model 使用的 runner。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm-ascend",
@@ -11547,6 +12243,7 @@
         },
         {
           "id": "make-runner",
+          "row": 2,
           "definition": {
             "repo": "vllm-project/vllm-ascend",
             "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
@@ -11560,7 +12257,8 @@
             "hash": "84a32813561588d7f081e25be70e1b2a366a3e806bc171088ea1a45bbbbc555e",
             "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L696-L702"
           },
-          "purpose": "普通非 encoder-only 分支，选择 worker/v2 的 NPUModelRunner。",
+          "purpose": "本图普通分支选择 worker/v2 的 NPUModelRunner。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm-ascend",
@@ -11578,21 +12276,23 @@
           ]
         },
         {
-          "id": "runner-instance",
+          "id": "npu-runner",
+          "row": 3,
           "definition": {
             "repo": "vllm-project/vllm-ascend",
             "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
             "file": "vllm_ascend/worker/v2/model_runner.py",
             "symbol": "NPUModelRunner.__init__",
             "start": 173,
-            "end": 178,
+            "end": 184,
             "line": 175,
-            "code": "    max_num_tokens: int\n\n    def __init__(self, vllm_config: VllmConfig, device: torch.device):\n        # Ascend-specific configurations\n        self.ascend_config = get_ascend_config()\n        self.sparse_kv_offload_manager = None",
+            "code": "    max_num_tokens: int\n\n    def __init__(self, vllm_config: VllmConfig, device: torch.device):\n        # Ascend-specific configurations\n        self.ascend_config = get_ascend_config()\n        self.sparse_kv_offload_manager = None\n        self.kvpp = KVPPRuntime()\n        # Adaptive verification uses this flag to apply FIA-specific query\n        # boundary and sequence length padding during FULL graph execution.\n        self.use_fia = False\n        self._target_uses_flashmla = False\n        # #56492: inherited dummy runs inspect this even on non-VMM platforms.",
             "sourceKey": "ed64feb6ae6f86a4988dde9f",
-            "hash": "b5beb89d19fe5003e6dd6b6ba412ef4d78f4f4a293ede230562379559b50e48e",
-            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/v2/model_runner.py#L173-L178"
+            "hash": "5f3a21722b0eb93fd4abcd490ea2d75d158a95aa0c6ae82f519ab0f3b4adc453",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/v2/model_runner.py#L173-L184"
           },
-          "purpose": "构造 MRv2 runner 实例。创建完成后，初始化调用栈逐层返回。",
+          "purpose": "构造 MRv2 runner，随后沿初始化栈返回。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm-ascend",
@@ -11600,12 +12300,12 @@
               "file": "vllm_ascend/worker/v2/model_runner.py",
               "symbol": "NPUModelRunner.__init__",
               "start": 173,
-              "end": 178,
+              "end": 184,
               "line": 175,
-              "code": "    max_num_tokens: int\n\n    def __init__(self, vllm_config: VllmConfig, device: torch.device):\n        # Ascend-specific configurations\n        self.ascend_config = get_ascend_config()\n        self.sparse_kv_offload_manager = None",
+              "code": "    max_num_tokens: int\n\n    def __init__(self, vllm_config: VllmConfig, device: torch.device):\n        # Ascend-specific configurations\n        self.ascend_config = get_ascend_config()\n        self.sparse_kv_offload_manager = None\n        self.kvpp = KVPPRuntime()\n        # Adaptive verification uses this flag to apply FIA-specific query\n        # boundary and sequence length padding during FULL graph execution.\n        self.use_fia = False\n        self._target_uses_flashmla = False\n        # #56492: inherited dummy runs inspect this even on non-VMM platforms.",
               "sourceKey": "ed64feb6ae6f86a4988dde9f",
-              "hash": "b5beb89d19fe5003e6dd6b6ba412ef4d78f4f4a293ede230562379559b50e48e",
-              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/v2/model_runner.py#L173-L178"
+              "hash": "5f3a21722b0eb93fd4abcd490ea2d75d158a95aa0c6ae82f519ab0f3b4adc453",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/v2/model_runner.py#L173-L184"
             },
             {
               "repo": "vllm-project/vllm-ascend",
@@ -11623,7 +12323,8 @@
           ]
         },
         {
-          "id": "worker-proc",
+          "id": "proc",
+          "row": 4,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -11637,7 +12338,8 @@
             "hash": "b5dc92afea5fb1e4edad732532bc7648cba2595b298baec8ebcd505e0d7239f6",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/executor/multiproc_executor.py#L781-L787"
           },
-          "purpose": "init_device 完整返回后，启动器继续执行 load_model。",
+          "purpose": "init_device 完整返回后继续 load_model。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -11668,7 +12370,42 @@
           ]
         },
         {
+          "id": "wrapper-forward",
+          "row": 5,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/v1/worker/worker_base.py",
+            "symbol": "WorkerWrapperBase.__getattr__",
+            "start": 404,
+            "end": 415,
+            "line": 406,
+            "code": "                hook(self.worker)\n\n    def __getattr__(self, attr: str):\n        return getattr(self.worker, attr)\n\n    def _apply_mm_cache(self, scheduler_output: SchedulerOutput) -> None:\n        mm_cache = self.mm_receiver_cache\n        if mm_cache is None:\n            return\n\n        for req_data in scheduler_output.scheduled_new_reqs:\n            req_data.mm_features = mm_cache.get_and_update_features(",
+            "sourceKey": "fc7f2f45fd8499c8c07d8d0b",
+            "hash": "1ef8885da4b73faabb8fb98733f0949a1ba7cb63e3d6f37e5d876ad452942303",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/worker_base.py#L404-L415"
+          },
+          "purpose": "load_model 属性转发到真实 NPUWorker。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/worker/worker_base.py",
+              "symbol": "WorkerWrapperBase.__getattr__",
+              "start": 404,
+              "end": 415,
+              "line": 406,
+              "code": "                hook(self.worker)\n\n    def __getattr__(self, attr: str):\n        return getattr(self.worker, attr)\n\n    def _apply_mm_cache(self, scheduler_output: SchedulerOutput) -> None:\n        mm_cache = self.mm_receiver_cache\n        if mm_cache is None:\n            return\n\n        for req_data in scheduler_output.scheduled_new_reqs:\n            req_data.mm_features = mm_cache.get_and_update_features(",
+              "sourceKey": "fc7f2f45fd8499c8c07d8d0b",
+              "hash": "1ef8885da4b73faabb8fb98733f0949a1ba7cb63e3d6f37e5d876ad452942303",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/worker_base.py#L404-L415"
+            }
+          ]
+        },
+        {
           "id": "worker-load",
+          "row": 5,
           "definition": {
             "repo": "vllm-project/vllm-ascend",
             "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
@@ -11682,7 +12419,8 @@
             "hash": "58d4c152eb58c7c2207d434194b934bbc8081f839f069a2009209a461910748b",
             "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L1037-L1043"
           },
-          "purpose": "把加载工作交给初始化阶段创建的 model_runner。",
+          "purpose": "委托保存的 model_runner。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm-ascend",
@@ -11700,7 +12438,8 @@
           ]
         },
         {
-          "id": "ascend-runner-load",
+          "id": "ascend-load",
+          "row": 6,
           "definition": {
             "repo": "vllm-project/vllm-ascend",
             "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
@@ -11714,7 +12453,8 @@
             "hash": "386b52971cf8f0bac21c7172f0fd81a0a64f930c07636737a451f855a7acf70c",
             "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/v2/model_runner.py#L338-L344"
           },
-          "purpose": "Ascend MRv2 加载适配，再委托上游实现。",
+          "purpose": "Ascend 适配后委托上游 MRv2。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm-ascend",
@@ -11732,7 +12472,8 @@
           ]
         },
         {
-          "id": "upstream-runner-load",
+          "id": "upstream-load",
+          "row": 7,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -11746,7 +12487,8 @@
             "hash": "68ff57e041b0a4f582d4554e226b6e1f4203f8997467d22a8fb46916dda37f56",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/gpu/model_runner.py#L405-L411"
           },
-          "purpose": "先取得 loader，再调用它加载模型；类名含 GPU，实际仍是 NPU 路径。",
+          "purpose": "取得默认 loader，进入继承的 load_model；不是切到 GPU。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -11773,6 +12515,19 @@
               "sourceKey": "d0e547908717570ecaaacaed",
               "hash": "2b4efc586a4c6b372ca1c5139cf4edaa9c7d25933bfde8c49f78518525dcb45c",
               "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/__init__.py#L56-L79"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/model_loader/__init__.py",
+              "symbol": "get_model_loader",
+              "start": 137,
+              "end": 143,
+              "line": 139,
+              "code": "\n\ndef get_model_loader(load_config: LoadConfig) -> BaseModelLoader:\n    \"\"\"Get a model loader based on the load format.\"\"\"\n    return get_model_loader_cls(load_config)(load_config)\n\n",
+              "sourceKey": "d0e547908717570ecaaacaed",
+              "hash": "baa6675155b44bf38754697c0d99ea7111c2e952dc7322d1c2facd03772cea53",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/__init__.py#L137-L143"
             },
             {
               "repo": "vllm-project/vllm",
@@ -11804,6 +12559,7 @@
         },
         {
           "id": "loader-load",
+          "row": 8,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -11817,7 +12573,8 @@
             "hash": "b00ef64aec32d59e037fcbfaa8b61f30b1afaed4cd0b04ccaa0271cc4005f1b0",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/base_loader.py#L128-L134"
           },
-          "purpose": "先创建模型，等构造完成后才写入 checkpoint。",
+          "purpose": "先 create_model，模型构造返回后再 load_weights。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -11831,11 +12588,25 @@
               "sourceKey": "c8380540d418f263bf949941",
               "hash": "cf90454a607b13025f6baff190fdfdc295ab9875dd0c1fec61a9994e7fa667d8",
               "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/base_loader.py#L141-L149"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/model_loader/base_loader.py",
+              "symbol": "BaseModelLoader.load_model",
+              "start": 156,
+              "end": 162,
+              "line": 158,
+              "code": "                if direct_reload_enabled():\n                    track_loaded_params(model)  # what every update must load again\n                self.load_weights(model, model_config)\n\n                # Release transient tensors held by PyTorch's caching allocator\n                # before weight post-processing and raw CUDA driver allocations.\n                gc.collect()",
+              "sourceKey": "c8380540d418f263bf949941",
+              "hash": "a4a6e36537224e442aedd68a87b5c00b37df39d34b6acdd9e0da5057006ef5b6",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/base_loader.py#L156-L162"
             }
           ]
         },
         {
-          "id": "loader-create",
+          "id": "create",
+          "row": 9,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -11849,7 +12620,8 @@
             "hash": "33a33e2c27e61d841d39305bfa41b6a201a4da367d79b76c4d5ceac5cfe672c2",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/base_loader.py#L102-L108"
           },
-          "purpose": "进入公共模型构造入口。",
+          "purpose": "调用公共模型构造入口。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -11867,7 +12639,8 @@
           ]
         },
         {
-          "id": "initialize-model",
+          "id": "initialize",
+          "row": 10,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -11881,7 +12654,8 @@
             "hash": "8831b24609d70e898bac9ca1caf3b8ba17a30e36e496fbd3baaaee6546c30e54",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/utils.py#L81-L87"
           },
-          "purpose": "按架构注册表解析本示例的模型类。",
+          "purpose": "本示例架构解析为 DeepseekV2ForCausalLM。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -11899,6 +12673,19 @@
             {
               "repo": "vllm-project/vllm",
               "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/model_loader/utils.py",
+              "symbol": "get_model_architecture",
+              "start": 350,
+              "end": 361,
+              "line": 352,
+              "code": "\n\ndef get_model_architecture(model_config: ModelConfig) -> tuple[type[nn.Module], str]:\n    key = hash(\n        (\n            model_config.model,\n            model_config.convert_type,\n            model_config.runner_type,\n            model_config.trust_remote_code,\n            model_config.model_impl,\n            tuple(getattr(model_config.hf_config, \"architectures\", None) or []),\n        )",
+              "sourceKey": "15a84d5229ad98bda5509be8",
+              "hash": "721ff5f4bc9c6e3ea0aaaaaf6bc61ecff7fc48381df5cbb4437cbf61de3cc369",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/utils.py#L350-L361"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
               "file": "vllm/model_executor/models/registry.py",
               "symbol": "model architecture mapping",
               "start": 92,
@@ -11912,7 +12699,8 @@
           ]
         },
         {
-          "id": "causal-model",
+          "id": "model",
+          "row": 11,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -11926,7 +12714,8 @@
             "hash": "cb20b5067d2416db170428bac5586490e5fb446c885fe23202d174bf1f83ebfe",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L1812-L1818"
           },
-          "purpose": "构造 DeepseekV2Model 主干。",
+          "purpose": "通过 model_cls 构造主干。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -11957,7 +12746,8 @@
           ]
         },
         {
-          "id": "model-backbone",
+          "id": "backbone",
+          "row": 12,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -11971,7 +12761,8 @@
             "hash": "ea2840ec2eb2308061dadeda8ad339f2f90a5d7b334461f45fd7f4c1d4de0200",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L1371-L1377"
           },
-          "purpose": "make_layers 按 PP 本地层范围调用 DecoderLayer 构造回调。",
+          "purpose": "按 PP 本地层范围创建层。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -11985,7 +12776,28 @@
               "sourceKey": "91b8abd442dfa93fdd5bdefa",
               "hash": "ad8689014e5d2af7345096fcf4b698ac11c15db0ba71452364213312166456a7",
               "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L1411-L1419"
-            },
+            }
+          ]
+        },
+        {
+          "id": "layers",
+          "row": 13,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/model_executor/models/utils.py",
+            "symbol": "make_layers",
+            "start": 973,
+            "end": 984,
+            "line": 975,
+            "code": "\n\ndef make_layers(\n    num_hidden_layers: int,\n    layer_fn: LayerFn,\n    prefix: str,\n) -> tuple[int, int, torch.nn.ModuleList]:\n    \"\"\"Make a list of layers with the given layer function, taking\n    pipeline parallelism into account.\n\n    Args:\n        num_hidden_layers: Total number of hidden layers in the model.",
+            "sourceKey": "2b82ea011a6999ae9ab64eb3",
+            "hash": "4d083e523a3947bcfedb0bb3390178db3a9d04c6ffaffcd48b2f5eb496c51c01",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/utils.py#L973-L984"
+          },
+          "purpose": "执行模型传入的 layer_fn 构造回调。",
+          "type": "function",
+          "sources": [
             {
               "repo": "vllm-project/vllm",
               "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -12002,7 +12814,8 @@
           ]
         },
         {
-          "id": "decoder-layer",
+          "id": "decoder",
+          "row": 14,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -12016,8 +12829,22 @@
             "hash": "96f7261425acbb75bdf1b4737aaeeaf6b43362df0d98667892561f31cf1fba48",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L1189-L1194"
           },
-          "purpose": "本层为 MoE 时，创建 DeepseekV2MoE；dense 层走另一支。",
+          "purpose": "本图只跟踪 is_moe_layer 为真的当前层。",
+          "type": "function",
           "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/models/deepseek_v2.py",
+              "symbol": "DeepseekV2DecoderLayer.__init__",
+              "start": 1231,
+              "end": 1238,
+              "line": 1233,
+              "code": "        else:\n            attn_cls = DeepseekV2Attention\n        is_moe_layer = (\n            config.n_routed_experts is not None\n            and layer_idx >= config.first_k_dense_replace\n            and layer_idx % moe_layer_freq == 0\n        )\n        self.use_sequence_parallel_moe = (",
+              "sourceKey": "91b8abd442dfa93fdd5bdefa",
+              "hash": "bfdf12273c72fd3976613f15e65c8a1d99f1c97709eda72c6ae28f409a807e7b",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L1231-L1238"
+            },
             {
               "repo": "vllm-project/vllm",
               "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -12034,7 +12861,8 @@
           ]
         },
         {
-          "id": "moe-layer",
+          "id": "moe",
+          "row": 15,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -12048,7 +12876,8 @@
             "hash": "1829b4e5e609d790c854e970aa2420abc9453396a66bf93e97d43c3103604203",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L294-L299"
           },
-          "purpose": "模型调用 FusedMoEFactory；该名称已被 Ascend 平台补丁替换。",
+          "purpose": "调用已被 Ascend 替换绑定的工厂名称。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -12062,7 +12891,28 @@
               "sourceKey": "91b8abd442dfa93fdd5bdefa",
               "hash": "44aff85ef807e72c84bfd1320674a729069065fed60b95b57f2bbdbfc702fff7",
               "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L375-L383"
-            },
+            }
+          ]
+        },
+        {
+          "id": "factory-binding",
+          "row": 15,
+          "definition": {
+            "repo": "vllm-project/vllm-ascend",
+            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+            "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+            "symbol": "factory binding replacement",
+            "start": 222,
+            "end": 233,
+            "line": 224,
+            "code": "\n\n_fused_moe_layer.FusedMoEFactory = _ascend_FusedMoE\n_fused_moe_pkg.FusedMoEFactory = _ascend_FusedMoE\n\n\nfor module_name, module in list(sys.modules.items()):\n    if not module_name.startswith(\"vllm.model_executor.models\") or module is None:\n        continue\n    if module.__dict__.get(\"FusedMoEFactory\") is _original_FusedMoE:\n        module.__dict__[\"FusedMoEFactory\"] = _ascend_FusedMoE\n",
+            "sourceKey": "243d95eabb1bc592cb4a1a39",
+            "hash": "00bf9a8f6ffe3bae67ea10199f514aa8b7e91f76d2991b8116a3c2fea1c91f21",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L222-L233"
+          },
+          "purpose": "启动时替换工厂绑定，不是每层重新打补丁。",
+          "type": "binding",
+          "sources": [
             {
               "repo": "vllm-project/vllm-ascend",
               "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
@@ -12076,10 +12926,12 @@
               "hash": "00bf9a8f6ffe3bae67ea10199f514aa8b7e91f76d2991b8116a3c2fea1c91f21",
               "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L222-L233"
             }
-          ]
+          ],
+          "title": "工厂绑定（预先完成）"
         },
         {
           "id": "ascend-factory",
+          "row": 16,
           "definition": {
             "repo": "vllm-project/vllm-ascend",
             "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
@@ -12093,8 +12945,35 @@
             "hash": "656e67b775450f4820032acba7c2bc128f774464e9292204a02fa6aa7f599540",
             "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L111-L117"
           },
-          "purpose": "准备 Router 和专家类适配，再调用保存的上游工厂。",
+          "purpose": "准备 Router 和专家类，再调用保存的原始上游工厂。",
+          "type": "function",
           "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+              "symbol": "_ascend_FusedMoE",
+              "start": 173,
+              "end": 196,
+              "line": 175,
+              "code": "        num_redundant_experts = configured_redundancy or upstream_redundancy\n    enable_router_eplb = enable_eplb\n    if router is None:\n        router = create_ascend_fused_moe_router(\n            top_k=top_k,\n            global_num_experts=num_experts + num_redundant_experts,\n            renormalize=renormalize,\n            use_grouped_topk=use_grouped_topk,\n            num_expert_group=num_expert_group,\n            topk_group=topk_group,\n            custom_routing_function=custom_routing_function,\n            scoring_func=scoring_func,\n            routed_scaling_factor=routed_scaling_factor if not apply_routed_scale_to_output else 1.0,\n            e_score_correction_bias=e_score_correction_bias,\n            num_logical_experts=num_experts,\n            hash_indices_table=hash_indices_table,\n            bias_vl=bias_vl,\n            image_sentinel_lo=image_sentinel_lo,\n            eplb_state=AscendEplbLayerState() if enable_router_eplb else None,\n        )\n    routed_experts_cls = _adapt_routed_experts_cls(routed_experts_cls)\n    routed_experts_args = dict(routed_experts_args) if routed_experts_args is not None else {}\n    routed_experts_args[\"n_shared_experts\"] = n_shared_experts\n    runner = _original_FusedMoE(",
+              "sourceKey": "243d95eabb1bc592cb4a1a39",
+              "hash": "43a41984db365d3848d22f97a9cf836fa7612c9eaa767d590a763a0320a84513",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L173-L196"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+              "symbol": "_ascend_FusedMoE",
+              "start": 191,
+              "end": 197,
+              "line": 193,
+              "code": "            eplb_state=AscendEplbLayerState() if enable_router_eplb else None,\n        )\n    routed_experts_cls = _adapt_routed_experts_cls(routed_experts_cls)\n    routed_experts_args = dict(routed_experts_args) if routed_experts_args is not None else {}\n    routed_experts_args[\"n_shared_experts\"] = n_shared_experts\n    runner = _original_FusedMoE(\n        *args,",
+              "sourceKey": "243d95eabb1bc592cb4a1a39",
+              "hash": "53c45f1c26ce733594eaf55cf8d622209d1c243d9369bb1e37e16452d3d88b6d",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L191-L197"
+            },
             {
               "repo": "vllm-project/vllm-ascend",
               "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
@@ -12124,7 +13003,8 @@
           ]
         },
         {
-          "id": "upstream-factory",
+          "id": "factory",
+          "row": 17,
           "definition": {
             "repo": "vllm-project/vllm",
             "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
@@ -12138,7 +13018,8 @@
             "hash": "8a2e12d84bbf148fcac2a321af640d3d4b7bde6eb01f6009bc10ab98f46165e0",
             "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L93-L99"
           },
-          "purpose": "到达上游工厂：组织专家映射、权重拥有者和 Runner。",
+          "purpose": "① 计算映射；② 创建权重拥有者；③ 创建 Runner。",
+          "type": "function",
           "sources": [
             {
               "repo": "vllm-project/vllm",
@@ -12180,93 +13061,1542 @@
               "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L468-L476"
             }
           ]
+        },
+        {
+          "id": "expert-map",
+          "row": 18,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+            "symbol": "ExpertMapManager.__init__",
+            "start": 180,
+            "end": 186,
+            "line": 182,
+            "code": "    \"\"\"\n\n    def __init__(\n        self,\n        max_num_batched_tokens: int,\n        top_k: int,\n        global_num_experts: int,",
+            "sourceKey": "71f84430f7c989e53fc20e25",
+            "hash": "448fbeaf801213fe3b69541e23cc85864314a6ddaafd09993bf39b8328ae9c08",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L180-L186"
+          },
+          "purpose": "根据并行配置初始化专家映射管理器。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+              "symbol": "ExpertMapManager.__init__",
+              "start": 233,
+              "end": 239,
+              "line": 235,
+              "code": "\n        # Calculate expert mappings\n        self._calculate_expert_maps()\n\n        # Initialize routing tables if needed\n        self._routing_tables = self._init_routing_tables()\n",
+              "sourceKey": "71f84430f7c989e53fc20e25",
+              "hash": "15ec429ec92d35ab87b7f9388f3ef0cf3670da34b809c2eb90933513c74fae74",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L233-L239"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/layer.py",
+              "symbol": "FusedMoEFactory",
+              "start": 301,
+              "end": 309,
+              "line": 303,
+              "code": "    # See ExpertMapManager for a detailed description of what it does and when\n    # it is required.\n    expert_map_manager = ExpertMapManager(\n        max_num_batched_tokens=max_num_batched_tokens,\n        top_k=top_k,\n        global_num_experts=global_num_experts,\n        num_redundant_experts=num_redundant_experts,\n        num_expert_group=num_expert_group,\n        moe_parallel_config=moe_parallel_config,",
+              "sourceKey": "d7569043c66ca0f74c25dd63",
+              "hash": "5f0d233f87848dd404aeb3ca132ba456ab6fc5e31f41140d5664d60349c11b29",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L301-L309"
+            }
+          ]
+        },
+        {
+          "id": "oot",
+          "row": 18,
+          "definition": {
+            "repo": "vllm-project/vllm-ascend",
+            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+            "file": "vllm_ascend/utils.py",
+            "symbol": "register_ascend_customop",
+            "start": 884,
+            "end": 895,
+            "line": 886,
+            "code": "\n\ndef register_ascend_customop(vllm_config: VllmConfig | None = None):\n    \"\"\"Register Ascend CustomOP\n\n    NOTE: if the register branch requires model type, please use `vllm.config.get_current_vllm_config`,\n    and ensure this will execute after model config is initilazed.\n    \"\"\"\n    global _ASCEND_CUSTOMOP_IS_REIGISTERED\n    if _ASCEND_CUSTOMOP_IS_REIGISTERED:\n        return\n    from vllm.model_executor.custom_op import CustomOp",
+            "sourceKey": "e05138ff28446913cbed65eb",
+            "hash": "f6f55aabf3c03e04daec7d18602d57ea9c16d3fa9cffd83bddbb99a4f0137dec",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L884-L895"
+          },
+          "purpose": "RoutedExperts / MoERunner 按注册表选择 Ascend 类。",
+          "type": "binding",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "register_ascend_customop",
+              "start": 962,
+              "end": 966,
+              "line": 964,
+              "code": "        \"BailingMoELinearAttention\": AscendBailingMoELinearAttention,\n        \"MoERunner\": AscendMoERunner,\n        \"RoutedExperts\": AscendRoutedExperts,\n        \"GateLinear\": AscendGateLinear,\n    }",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "e5f7c0287a569e636a4f58c2e572ab9d4c2fd73f28714f292f64c0e3f9042923",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L962-L966"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+              "symbol": "adapt routed class",
+              "start": 191,
+              "end": 195,
+              "line": 193,
+              "code": "            eplb_state=AscendEplbLayerState() if enable_router_eplb else None,\n        )\n    routed_experts_cls = _adapt_routed_experts_cls(routed_experts_cls)\n    routed_experts_args = dict(routed_experts_args) if routed_experts_args is not None else {}\n    routed_experts_args[\"n_shared_experts\"] = n_shared_experts",
+              "sourceKey": "243d95eabb1bc592cb4a1a39",
+              "hash": "56ed87da337864640c99889bb7fff1c50abc33896b465e78f2de2fbdc4260983",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L191-L195"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.__init__ registration",
+              "start": 214,
+              "end": 218,
+              "line": 216,
+              "code": "        if get_current_hardware_profile().supports(HardwareCapability.ATB_EXTENSIONS):\n            _register_atb_extensions()\n        register_ascend_customop(vllm_config)\n        # init ascend config and soc version\n        ascend_config = init_ascend_config(vllm_config)",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "a392ff5cc504069d39be978bc3bfec93bb9deb0371117465a4bf45876634a3ae",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L214-L218"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "OOT registration loop",
+              "start": 1018,
+              "end": 1022,
+              "line": 1020,
+              "code": "\n    for name, op_cls in REGISTERED_ASCEND_OPS.items():\n        CustomOp.register_oot(_decorated_op_cls=op_cls, name=name)\n\n    # NOTE: Keep this at last to ensure all custom actions are registered",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "bdad49e322a6a6821a210f053e4d7eb78a48a232fe1dcc5df9033b61ba274062",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L1018-L1022"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/custom_op.py",
+              "symbol": "PluggableLayer.__new__",
+              "start": 44,
+              "end": 69,
+              "line": 46,
+              "code": "    \"\"\"\n\n    def __new__(cls, *args, **kwargs):\n        try:\n            layer_class_name = cls.__name__\n        except AttributeError:\n            raise TypeError(\n                f\"Cannot instantiate '{cls.__name__}': its 'name' attribute \"\n                f\"was not set, possibly because it was not decorated with \"\n                f\"@PluggableLayer.register, or it's the PluggableLayer itself.\"\n            ) from None\n\n        if layer_class_name not in op_registry_oot:\n            layer_cls_to_instantiate = cls\n        else:\n            layer_cls_to_instantiate = op_registry_oot[layer_class_name]\n            logger.debug(\n                \"Instantiating pluggable layer: %s using %s\",\n                layer_class_name,\n                str(layer_cls_to_instantiate),\n            )\n        return super().__new__(layer_cls_to_instantiate)\n\n    # Decorator to register pluggable layers.\n    @classmethod\n    def register(cls, name: str):",
+              "sourceKey": "2d865e2d43814cb4020726d1",
+              "hash": "2025c070b205561554397c7124a3d90161ebad4924b2ab972a1088734f3118f3",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/custom_op.py#L44-L69"
+            }
+          ],
+          "title": "OOT 类绑定（预先注册）"
+        },
+        {
+          "id": "calculate-map",
+          "row": 19,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+            "symbol": "ExpertMapManager._calculate_expert_maps",
+            "start": 432,
+            "end": 443,
+            "line": 434,
+            "code": "        return \"round_robin\"\n\n    def _calculate_expert_maps(self) -> None:\n        \"\"\"Calculate expert mappings based on placement strategy.\"\"\"\n        device = torch.get_default_device()\n        device = device if device.type != \"meta\" else torch.device(\"cpu\")\n        with device:\n            (\n                self._local_num_experts,\n                self._expert_map,\n                self._expert_mask,\n            ) = determine_expert_map(",
+            "sourceKey": "71f84430f7c989e53fc20e25",
+            "hash": "dddc829aa5ee2ee70434c19718b43c1d532119a3da185c955be16d5ee2f04a9a",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L432-L443"
+          },
+          "purpose": "传入本进程的 EP rank/size 和专家总数。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+              "symbol": "ExpertMapManager._calculate_expert_maps",
+              "start": 441,
+              "end": 453,
+              "line": 443,
+              "code": "                self._expert_map,\n                self._expert_mask,\n            ) = determine_expert_map(\n                ep_size=self.ep_size,\n                ep_rank=self.ep_rank,\n                global_num_experts=self.global_num_experts,\n                expert_placement_strategy=self._placement_strategy,\n                num_fused_shared_experts=self.num_fused_shared_experts,\n                return_expert_mask=self.rocm_aiter_enabled,\n            )\n\n        self._local_num_experts += self.num_fused_shared_experts\n",
+              "sourceKey": "71f84430f7c989e53fc20e25",
+              "hash": "f25e88fd2b7fac12d229715dd7ad04efd3c0abeadc49c542f7f0c09ab19bae31",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L441-L453"
+            }
+          ]
+        },
+        {
+          "id": "determine-map",
+          "row": 20,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+            "symbol": "determine_expert_map",
+            "start": 20,
+            "end": 31,
+            "line": 22,
+            "code": "\n\ndef determine_expert_map(\n    ep_size: int,\n    ep_rank: int,\n    global_num_experts: int,\n    expert_placement_strategy: ExpertPlacementStrategy = \"linear\",\n    num_fused_shared_experts: int = 0,\n    return_expert_mask: bool = False,\n) -> tuple[int, torch.Tensor | None, torch.Tensor | None]:\n    \"\"\"Calculates how many experts should be assigned to each rank for EP and\n    creates a mapping from global to local expert index. Experts are",
+            "sourceKey": "71f84430f7c989e53fc20e25",
+            "hash": "a5e90d371ce054fc4ca0a4aa51b69ed14bf0a8a4f707cdb65018a53d0f9d4a6e",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L20-L31"
+          },
+          "purpose": "当前 EP4、E8、linear：每进程 2 个本层专家。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+              "symbol": "determine_expert_map",
+              "start": 73,
+              "end": 82,
+              "line": 75,
+              "code": "\n    # Create an expert map for the local experts\n    if expert_placement_strategy == \"linear\":\n        start_idx = ep_rank * base_experts + min(ep_rank, remainder)\n        expert_map[start_idx : start_idx + local_num_experts] = torch.arange(\n            0, local_num_experts, dtype=torch.int32\n        )\n    elif expert_placement_strategy == \"round_robin\":\n        local_log_experts = torch.arange(\n            ep_rank, global_num_experts, ep_size, dtype=torch.int32",
+              "sourceKey": "71f84430f7c989e53fc20e25",
+              "hash": "832cbb75399f17e0c9a55dbdb2111d20ae431f4f52a0c8bc9cb4a3f7ded765d8",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L73-L82"
+            }
+          ]
+        },
+        {
+          "id": "local-map",
+          "row": 21,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+            "symbol": "determine_expert_map",
+            "start": 73,
+            "end": 82,
+            "line": 75,
+            "code": "\n    # Create an expert map for the local experts\n    if expert_placement_strategy == \"linear\":\n        start_idx = ep_rank * base_experts + min(ep_rank, remainder)\n        expert_map[start_idx : start_idx + local_num_experts] = torch.arange(\n            0, local_num_experts, dtype=torch.int32\n        )\n    elif expert_placement_strategy == \"round_robin\":\n        local_log_experts = torch.arange(\n            ep_rank, global_num_experts, ep_size, dtype=torch.int32",
+            "sourceKey": "71f84430f7c989e53fc20e25",
+            "hash": "832cbb75399f17e0c9a55dbdb2111d20ae431f4f52a0c8bc9cb4a3f7ded765d8",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L73-L82"
+          },
+          "purpose": "global 4 / EP rank 2：E4→槽0，E5→槽1；其余为 -1。",
+          "type": "state",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+              "symbol": "determine_expert_map",
+              "start": 73,
+              "end": 82,
+              "line": 75,
+              "code": "\n    # Create an expert map for the local experts\n    if expert_placement_strategy == \"linear\":\n        start_idx = ep_rank * base_experts + min(ep_rank, remainder)\n        expert_map[start_idx : start_idx + local_num_experts] = torch.arange(\n            0, local_num_experts, dtype=torch.int32\n        )\n    elif expert_placement_strategy == \"round_robin\":\n        local_log_experts = torch.arange(\n            ep_rank, global_num_experts, ep_size, dtype=torch.int32",
+              "sourceKey": "71f84430f7c989e53fc20e25",
+              "hash": "832cbb75399f17e0c9a55dbdb2111d20ae431f4f52a0c8bc9cb4a3f7ded765d8",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L73-L82"
+            }
+          ],
+          "title": "本地 expert_map"
+        },
+        {
+          "id": "upstream-experts",
+          "row": 22,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/model_executor/layers/fused_moe/routed_experts.py",
+            "symbol": "RoutedExperts.__init__",
+            "start": 83,
+            "end": 94,
+            "line": 85,
+            "code": "    hash_indices_table: torch.Tensor | None = None\n\n    def __init__(\n        self,\n        layer_name: str,\n        params_dtype: torch.dtype,\n        moe_config: FusedMoEConfig,\n        quant_config: QuantizationConfig | None,\n        expert_map_manager: ExpertMapManager,\n        ckpt_gate_proj_name: str = \"gate_proj\",\n        ckpt_down_proj_name: str = \"down_proj\",\n        ckpt_up_proj_name: str | None = \"up_proj\",",
+            "sourceKey": "d35cbbdf320b0bd37f35f120",
+            "hash": "c0df1fd00814a280b7d202012abf38afaaaa119280cc24ac89fe8a666f781ab6",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/routed_experts.py#L83-L94"
+          },
+          "purpose": "上游父类选择 quant_method 并分配参数。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/routed_experts.py",
+              "symbol": "RoutedExperts.__init__",
+              "start": 230,
+              "end": 236,
+              "line": 232,
+              "code": "        }\n\n        self.quant_method.create_weights(layer=self, **moe_quant_params)\n\n        loader = self.shared_expert_online_loader\n        if loader is not None and loader.stages_shared_experts:\n            loader.create_staging(self, params_dtype, weight_loader=self.weight_loader)",
+              "sourceKey": "d35cbbdf320b0bd37f35f120",
+              "hash": "2d98036152ef63b8abf4a47568ca0a029767174254bb90efdac8e5e6b184e4a9",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/routed_experts.py#L230-L236"
+            }
+          ]
+        },
+        {
+          "id": "ascend-experts",
+          "row": 22,
+          "definition": {
+            "repo": "vllm-project/vllm-ascend",
+            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+            "file": "vllm_ascend/ops/fused_moe/routed_experts.py",
+            "symbol": "AscendRoutedExperts.__init__",
+            "start": 421,
+            "end": 427,
+            "line": 423,
+            "code": "    \"\"\"\n\n    def __init__(\n        self,\n        *args,\n        n_shared_experts: int = 0,\n        **kwargs,",
+            "sourceKey": "22c7ffcd87ee3a28b9d5d09c",
+            "hash": "a91356f45e6d74bf3665d76a06b5f24984598d32455bfbfe734330ea2cf09799",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/routed_experts.py#L421-L427"
+          },
+          "purpose": "创建 Ascend 专家权重拥有者，内部 super 初始化。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/layer.py",
+              "symbol": "FusedMoEFactory",
+              "start": 433,
+              "end": 441,
+              "line": 435,
+              "code": "\n    assert params_dtype is not None\n    routed_experts = routed_experts_cls(\n        layer_name,\n        params_dtype,\n        moe_config,\n        quant_config,\n        expert_map_manager=expert_map_manager,\n        ckpt_gate_proj_name=ckpt_names[0],",
+              "sourceKey": "d7569043c66ca0f74c25dd63",
+              "hash": "0733a73c5e1ccaed8d370158eefac5f11ddd650528bb4b60c9314406208a353d",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L433-L441"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/ops/fused_moe/routed_experts.py",
+              "symbol": "AscendRoutedExperts.__init__",
+              "start": 428,
+              "end": 435,
+              "line": 430,
+              "code": "    ):\n        with expert_offload_weights(self, get_ascend_config()):\n            super().__init__(*args, **kwargs)\n        if self.quant_config is None:\n            # Preserve the pre-refactor BF16 lifecycle: let upstream create\n            # weights first, then install the Ascend execution method.\n            self._replace_quant_method(AscendUnquantizedFusedMoEMethod(self.moe_config))\n        self.router: FusedMoERouter | None = None",
+              "sourceKey": "22c7ffcd87ee3a28b9d5d09c",
+              "hash": "9c4967fb3b1366ca963baf859646babea8ed7a4598b57e64125d6460fada78ea",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/routed_experts.py#L428-L435"
+            }
+          ]
+        },
+        {
+          "id": "parameters",
+          "row": 23,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/model_executor/layers/fused_moe/routed_experts.py",
+            "symbol": "RoutedExperts.__init__",
+            "start": 230,
+            "end": 236,
+            "line": 232,
+            "code": "        }\n\n        self.quant_method.create_weights(layer=self, **moe_quant_params)\n\n        loader = self.shared_expert_online_loader\n        if loader is not None and loader.stages_shared_experts:\n            loader.create_staging(self, params_dtype, weight_loader=self.weight_loader)",
+            "sourceKey": "d35cbbdf320b0bd37f35f120",
+            "hash": "2d98036152ef63b8abf4a47568ca0a029767174254bb90efdac8e5e6b184e4a9",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/routed_experts.py#L230-L236"
+          },
+          "purpose": "为本地专家创建参数存储；还未写入 checkpoint。",
+          "type": "operation",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/routed_experts.py",
+              "symbol": "RoutedExperts.__init__",
+              "start": 230,
+              "end": 236,
+              "line": 232,
+              "code": "        }\n\n        self.quant_method.create_weights(layer=self, **moe_quant_params)\n\n        loader = self.shared_expert_online_loader\n        if loader is not None and loader.stages_shared_experts:\n            loader.create_staging(self, params_dtype, weight_loader=self.weight_loader)",
+              "sourceKey": "d35cbbdf320b0bd37f35f120",
+              "hash": "2d98036152ef63b8abf4a47568ca0a029767174254bb90efdac8e5e6b184e4a9",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/routed_experts.py#L230-L236"
+            }
+          ],
+          "title": "本地专家参数存储"
+        },
+        {
+          "id": "upstream-runner",
+          "row": 25,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/model_executor/layers/fused_moe/runner/moe_runner.py",
+            "symbol": "MoERunner.__init__",
+            "start": 260,
+            "end": 271,
+            "line": 262,
+            "code": "    \"\"\"\n\n    def __init__(\n        self,\n        layer_name: str,\n        moe_config: FusedMoEConfig,\n        router: FusedMoERouter,\n        routed_experts: RoutedExperts,\n        enable_dbo: bool = False,\n        gate: torch.nn.Module | None = None,\n        shared_experts: torch.nn.Module | None = None,\n        shared_expert_gate: torch.nn.Module | None = None,",
+            "sourceKey": "a1b29c014242de75d41b2697",
+            "hash": "604da8982ea912cb88e0f33bf523cb05c1a184ff3947f73d4de5ae8fd5c180f6",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/runner/moe_runner.py#L260-L271"
+          },
+          "purpose": "初始化上游通用 Runner 状态。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/runner/moe_runner.py",
+              "symbol": "MoERunner.__init__",
+              "start": 260,
+              "end": 271,
+              "line": 262,
+              "code": "    \"\"\"\n\n    def __init__(\n        self,\n        layer_name: str,\n        moe_config: FusedMoEConfig,\n        router: FusedMoERouter,\n        routed_experts: RoutedExperts,\n        enable_dbo: bool = False,\n        gate: torch.nn.Module | None = None,\n        shared_experts: torch.nn.Module | None = None,\n        shared_expert_gate: torch.nn.Module | None = None,",
+              "sourceKey": "a1b29c014242de75d41b2697",
+              "hash": "604da8982ea912cb88e0f33bf523cb05c1a184ff3947f73d4de5ae8fd5c180f6",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/runner/moe_runner.py#L260-L271"
+            }
+          ]
+        },
+        {
+          "id": "ascend-runner",
+          "row": 25,
+          "definition": {
+            "repo": "vllm-project/vllm-ascend",
+            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+            "file": "vllm_ascend/ops/fused_moe/fused_moe.py",
+            "symbol": "AscendMoERunner.__init__",
+            "start": 87,
+            "end": 92,
+            "line": 88,
+            "code": "class AscendMoERunner(MoERunner):  # type: ignore[no-redef]\n    def __init__(\n        self,\n        layer_name,\n        moe_config: FusedMoEConfig,\n        router: FusedMoERouter,",
+            "sourceKey": "e35bbb8802620e2e6e9c0ea4",
+            "hash": "38abc39ec96a546354fada2e75dd0ce862a753ae8cf5be3b02a29c9f6a6c4fc7",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/fused_moe.py#L87-L92"
+          },
+          "purpose": "连接 Router、专家权重拥有者和 Ascend 执行路径。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/ops/fused_moe/fused_moe.py",
+              "symbol": "AscendMoERunner.__init__",
+              "start": 111,
+              "end": 124,
+              "line": 113,
+              "code": "                )\n            scaling_kwargs[\"routed_scale_mode\"] = routed_scale_mode\n        super().__init__(\n            layer_name,\n            moe_config,\n            router,\n            routed_experts,\n            enable_dbo,\n            gate,\n            shared_experts,\n            shared_expert_gate,\n            routed_input_transform,\n            routed_output_transform,\n            routed_scaling_factor,",
+              "sourceKey": "e35bbb8802620e2e6e9c0ea4",
+              "hash": "b49debcce8c5eafae92e67d45706a59375c7140d4aff9d05e50145b5fea66dfa",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/fused_moe.py#L111-L124"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/ops/fused_moe/fused_moe.py",
+              "symbol": "AscendMoERunner.__init__",
+              "start": 158,
+              "end": 166,
+              "line": 160,
+              "code": "                self._forward_entry = torch.ops.vllm.ascend_moe_forward_shared_sp\n\n        setup_moe_comm_method(self.moe_config)\n        # Communication objects are shared across MoE layers. Keep the bound\n        # activation with its owning layer when a later layer replaces them.\n        self.routed_experts.mega_moe_activation_kwargs = getattr(\n            get_moe_comm_method(MoECommType.FUSED_MC2, self.moe_config), \"mega_moe_activation_kwargs\", None\n        )\n        alltoall_comm = get_moe_comm_method(MoECommType.ALLTOALL, self.moe_config)",
+              "sourceKey": "e35bbb8802620e2e6e9c0ea4",
+              "hash": "a3917945089f3f940643cbde351a46cd2ae3442fcdd50062d6f78f85258551bc",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/fused_moe.py#L158-L166"
+            }
+          ]
+        },
+        {
+          "id": "comm-setup",
+          "row": 26,
+          "definition": {
+            "repo": "vllm-project/vllm-ascend",
+            "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+            "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+            "symbol": "setup_moe_comm_method",
+            "start": 66,
+            "end": 72,
+            "line": 68,
+            "code": "\n\ndef setup_moe_comm_method(moe_config):\n    if moe_config.ep_size > 1:\n        _MoECommMethods[_moe_config_key(MoECommType.ALLTOALL, moe_config)] = AlltoAllCommImpl(moe_config)\n        _MoECommMethods[_moe_config_key(MoECommType.ALLGATHER, moe_config)] = AllGatherCommImpl(moe_config)\n        _MoECommMethods[_moe_config_key(MoECommType.MC2, moe_config)] = MC2CommImpl(moe_config)",
+            "sourceKey": "17d4b1243e9426fc301ab175",
+            "hash": "b2e48b620730e7e5d7da56568ba93859b0f99954cab30e44a716b6d52b027ebf",
+            "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/moe_comm_method.py#L66-L72"
+          },
+          "purpose": "当前 EP4 预注册四类通信实现；每批选择类型发生在之后。",
+          "type": "function",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/ops/fused_moe/moe_comm_method.py",
+              "symbol": "setup_moe_comm_method",
+              "start": 68,
+              "end": 77,
+              "line": 69,
+              "code": "def setup_moe_comm_method(moe_config):\n    if moe_config.ep_size > 1:\n        _MoECommMethods[_moe_config_key(MoECommType.ALLTOALL, moe_config)] = AlltoAllCommImpl(moe_config)\n        _MoECommMethods[_moe_config_key(MoECommType.ALLGATHER, moe_config)] = AllGatherCommImpl(moe_config)\n        _MoECommMethods[_moe_config_key(MoECommType.MC2, moe_config)] = MC2CommImpl(moe_config)\n        _MoECommMethods[_moe_config_key(MoECommType.FUSED_MC2, moe_config)] = FusedMC2CommImpl(moe_config)\n    else:\n        _MoECommMethods[_moe_config_key(MoECommType.ALLGATHER, moe_config)] = AllGatherCommImpl(moe_config)\n\n",
+              "sourceKey": "17d4b1243e9426fc301ab175",
+              "hash": "cc2071c8d35f1be4e7090d866dfc1bd36dcfcd6793c398a088943220dc121127",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/moe_comm_method.py#L68-L77"
+            }
+          ]
+        },
+        {
+          "id": "result",
+          "row": 27,
+          "definition": {
+            "repo": "vllm-project/vllm",
+            "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+            "file": "vllm/model_executor/layers/fused_moe/layer.py",
+            "symbol": "FusedMoEFactory",
+            "start": 468,
+            "end": 476,
+            "line": 470,
+            "code": "        runner_cls = MoERunner\n\n    runner = runner_cls(\n        layer_name=layer_name,\n        moe_config=moe_config,\n        router=router,\n        routed_experts=routed_experts,\n        enable_dbo=vllm_config.parallel_config.enable_dbo,\n        gate=gate,",
+            "sourceKey": "d7569043c66ca0f74c25dd63",
+            "hash": "6e9e729c33d7f4ac31545334f66eed2259e1f149768be382e92538af3bf9479f",
+            "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L468-L476"
+          },
+          "purpose": "返回 Runner，完成模型构造后，loader 才继续加载 checkpoint。",
+          "type": "state",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/layer.py",
+              "symbol": "FusedMoEFactory",
+              "start": 488,
+              "end": 492,
+              "line": 490,
+              "code": "    )\n\n    return runner\n\n",
+              "sourceKey": "d7569043c66ca0f74c25dd63",
+              "hash": "ebe185ec98b4fa27eef26f75d561c8bd1a91eac8c6d0493383527c891ff9b0cc",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L488-L492"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/model_loader/base_loader.py",
+              "symbol": "BaseModelLoader.load_model",
+              "start": 156,
+              "end": 162,
+              "line": 158,
+              "code": "                if direct_reload_enabled():\n                    track_loaded_params(model)  # what every update must load again\n                self.load_weights(model, model_config)\n\n                # Release transient tensors held by PyTorch's caching allocator\n                # before weight post-processing and raw CUDA driver allocations.\n                gc.collect()",
+              "sourceKey": "c8380540d418f263bf949941",
+              "hash": "a4a6e36537224e442aedd68a87b5c00b37df39d34b6acdd9e0da5057006ef5b6",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/base_loader.py#L156-L162"
+            }
+          ],
+          "title": "MoE 执行管线构造完成"
         }
       ],
-      "links": [
+      "edges": [
         {
+          "from": "ep",
+          "to": "npu-init",
+          "label": "沿栈返回",
           "kind": "return",
-          "label": "沿原调用栈返回",
-          "description": "经 ensure、分布式初始化与 _init_device 返回到 NPUWorker.init_device；下一项是创建 workspace 和 runner。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.init_device",
+              "start": 665,
+              "end": 673,
+              "line": 667,
+              "code": "        # in ray scenario. see https://github.com/vllm-project/vllm/pull/26845\n        # for more details\n        self.device = self._init_device()\n        compilation = get_ascend_config().ascend_compilation_config\n        static_kernel_compilation = \"disabled\"\n        if compilation.enable_static_kernel:\n            static_kernel_compilation = (\n                \"enabled through model compilation\" if compilation.enable_npugraph_ex else \"enabled during graph warmup\"\n            )",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "0c10a037ac12de0016a84f9aa8c1afe42c815356e097f58f7380b95f4c5601f3",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L665-L673"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.init_device",
+              "start": 684,
+              "end": 687,
+              "line": 686,
+              "code": "        register_ascend_fla_customop()\n\n        self._init_workspace_and_model_runner()\n",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "e53a0235866edae0fe65e8fe9d03a67236226ff2626fc1a58b680629b5cd73b0",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L684-L687"
+            }
+          ]
         },
         {
+          "from": "npu-init",
+          "to": "workspace",
+          "label": "继续调用",
           "kind": "call",
-          "label": "调用",
-          "description": "返回 _init_device 后，继续创建 workspace 和 model runner；这仍在 init_device 阶段。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.init_device",
+              "start": 684,
+              "end": 687,
+              "line": 686,
+              "code": "        register_ascend_fla_customop()\n\n        self._init_workspace_and_model_runner()\n",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "e53a0235866edae0fe65e8fe9d03a67236226ff2626fc1a58b680629b5cd73b0",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L684-L687"
+            }
+          ]
         },
         {
+          "from": "workspace",
+          "to": "make-runner",
+          "label": "调用",
           "kind": "call",
-          "label": "调用",
-          "description": "为后续 load_model 保存 runner 实例。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker._init_workspace_and_model_runner",
+              "start": 690,
+              "end": 697,
+              "line": 692,
+              "code": "        num_ubatches = 1\n        init_workspace_manager(self.device, num_ubatches)\n        self.model_runner = self._make_model_runner()\n\n        if self.rank == 0:\n            # If usage stat is enabled, collect relevant info.\n            report_usage_stats(self.vllm_config)\n",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "2ab3fe0553725d339c9434446c331cbe2f72e9a8173bba27538d9373b95b982f",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L690-L697"
+            }
+          ]
         },
         {
-          "kind": "construct",
-          "label": "构造实例",
-          "description": "非 encoder-only 分支明确导入 worker/v2 下的 NPUModelRunner。"
+          "from": "make-runner",
+          "to": "npu-runner",
+          "label": "构造",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker._make_model_runner",
+              "start": 706,
+              "end": 714,
+              "line": 708,
+              "code": "        from vllm_ascend.worker.v2.model_runner import NPUModelRunner\n\n        model_runner = NPUModelRunner(self.vllm_config, self.device)\n        compilation = get_ascend_config().ascend_compilation_config\n        if compilation.enable_static_kernel and not compilation.enable_npugraph_ex:\n            initialize_static_kernel_runtime(self.vllm_config, capture=True)\n            self._static_kernel_runtime_initialized = True\n        return model_runner\n",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "05610e001cd8b851240b4ae2f0afadc4a6d8da21c05e9b8ce394bd769ba921eb",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L706-L714"
+            }
+          ]
         },
         {
+          "from": "npu-runner",
+          "to": "proc",
+          "label": "初始化返回",
           "kind": "return",
-          "label": "初始化完成，沿栈返回启动器",
-          "description": "runner 构造完成后，经 _make_model_runner、workspace 初始化和 init_device 返回；不是 runner 反向调用 WorkerProc。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker._make_model_runner",
+              "start": 706,
+              "end": 714,
+              "line": 708,
+              "code": "        from vllm_ascend.worker.v2.model_runner import NPUModelRunner\n\n        model_runner = NPUModelRunner(self.vllm_config, self.device)\n        compilation = get_ascend_config().ascend_compilation_config\n        if compilation.enable_static_kernel and not compilation.enable_npugraph_ex:\n            initialize_static_kernel_runtime(self.vllm_config, capture=True)\n            self._static_kernel_runtime_initialized = True\n        return model_runner\n",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "05610e001cd8b851240b4ae2f0afadc4a6d8da21c05e9b8ce394bd769ba921eb",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L706-L714"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/executor/multiproc_executor.py",
+              "symbol": "WorkerProc.__init__",
+              "start": 821,
+              "end": 829,
+              "line": 823,
+              "code": "            self.worker.elastic_ep_execute(\"load_model\")\n        else:\n            self.worker.load_model()\n\n        scheduler_config = vllm_config.scheduler_config\n        self.use_async_scheduling = scheduler_config.async_scheduling\n        if self.use_async_scheduling:\n            self.async_output_queue: queue.Queue = queue.Queue()\n            self.async_output_copy_thread = Thread(",
+              "sourceKey": "c4288f441f62ace467c72534",
+              "hash": "5cfad4613aa3e7f50ba1ab4aebcfb6b3231be8efde0b7b40088a3b456ad999dd",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/executor/multiproc_executor.py#L821-L829"
+            }
+          ]
         },
         {
-          "kind": "continuation",
-          "label": "继续 load_model（包装层转发）",
-          "description": "init_device 整体返回后，非 elastic 分支继续 load_model；包装层通过 __getattr__ 转发。"
-        },
-        {
-          "kind": "call",
-          "label": "调用",
-          "description": "把模型加载委派给上一阶段创建的 MRv2 runner。"
-        },
-        {
-          "kind": "inheritance",
-          "label": "super：进入上游 MRv2",
-          "description": "Ascend 做适配后调用上游 MRv2 实现。上游类名含 GPU，不代表此处切换到 GPU 执行。"
-        },
-        {
-          "kind": "inheritance",
-          "label": "loader 使用继承的 load_model",
-          "description": "未传入现成 model 时进入 loader；DefaultModelLoader 继承 BaseModelLoader.load_model。"
-        },
-        {
-          "kind": "call",
-          "label": "调用",
-          "description": "先构造模型与参数容器；create_model 返回后才继续 self.load_weights。"
-        },
-        {
-          "kind": "call",
-          "label": "调用",
-          "description": "调用公共模型构造入口。"
-        },
-        {
+          "from": "proc",
+          "to": "wrapper-forward",
+          "label": "load_model 转发",
           "kind": "dispatch",
-          "label": "按模型架构解析",
-          "description": "按架构选择模型类；注册表把本示例的 DeepseekV2ForCausalLM 指向 deepseek_v2.py 中的同名类，进入现代构造接口。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/executor/multiproc_executor.py",
+              "symbol": "WorkerProc.__init__",
+              "start": 821,
+              "end": 829,
+              "line": 823,
+              "code": "            self.worker.elastic_ep_execute(\"load_model\")\n        else:\n            self.worker.load_model()\n\n        scheduler_config = vllm_config.scheduler_config\n        self.use_async_scheduling = scheduler_config.async_scheduling\n        if self.use_async_scheduling:\n            self.async_output_queue: queue.Queue = queue.Queue()\n            self.async_output_copy_thread = Thread(",
+              "sourceKey": "c4288f441f62ace467c72534",
+              "hash": "5cfad4613aa3e7f50ba1ab4aebcfb6b3231be8efde0b7b40088a3b456ad999dd",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/executor/multiproc_executor.py#L821-L829"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/worker/worker_base.py",
+              "symbol": "WorkerWrapperBase.__getattr__",
+              "start": 404,
+              "end": 410,
+              "line": 406,
+              "code": "                hook(self.worker)\n\n    def __getattr__(self, attr: str):\n        return getattr(self.worker, attr)\n\n    def _apply_mm_cache(self, scheduler_output: SchedulerOutput) -> None:\n        mm_cache = self.mm_receiver_cache",
+              "sourceKey": "fc7f2f45fd8499c8c07d8d0b",
+              "hash": "499f7e7fdbe9071d27b3ceedc694a3815abdebf91d3020dea9a0aeeabce0cefb",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/worker_base.py#L404-L410"
+            }
+          ]
         },
         {
+          "from": "wrapper-forward",
+          "to": "worker-load",
+          "label": "属性转发",
           "kind": "dispatch",
-          "label": "self.model_cls 构造",
-          "description": "model_cls=DeepseekV2Model，构造主干。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/worker/worker_base.py",
+              "symbol": "WorkerWrapperBase.__getattr__",
+              "start": 404,
+              "end": 410,
+              "line": 406,
+              "code": "                hook(self.worker)\n\n    def __getattr__(self, attr: str):\n        return getattr(self.worker, attr)\n\n    def _apply_mm_cache(self, scheduler_output: SchedulerOutput) -> None:\n        mm_cache = self.mm_receiver_cache",
+              "sourceKey": "fc7f2f45fd8499c8c07d8d0b",
+              "hash": "499f7e7fdbe9071d27b3ceedc694a3815abdebf91d3020dea9a0aeeabce0cefb",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/worker_base.py#L404-L410"
+            }
+          ]
         },
         {
+          "from": "worker-load",
+          "to": "ascend-load",
+          "label": "调用",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.load_model",
+              "start": 1057,
+              "end": 1065,
+              "line": 1059,
+              "code": "\n        with context, empty_cache_context, set_current_vllm_config(self.vllm_config):\n            self.model_runner.load_model()\n\n        if shared_expert_tp_enable():\n            from vllm_ascend.ops.fused_moe.fused_moe import AscendMoERunner\n\n            if not any(\n                isinstance(module, AscendMoERunner)",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "7011e71740cd10c6f2d5b152af92f0c4551907efc853f33c1026f7b9e9ae8f3e",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L1057-L1065"
+            }
+          ]
+        },
+        {
+          "from": "ascend-load",
+          "to": "upstream-load",
+          "label": "super 调用",
+          "kind": "inheritance",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/v2/model_runner.py",
+              "symbol": "NPUModelRunner.load_model",
+              "start": 352,
+              "end": 360,
+              "line": 354,
+              "code": "            with track_host_offload_owners() as owners:\n                try:\n                    super().load_model(load_dummy_weights, *args, **kwargs)\n                except BaseException:\n                    # self.model may not exist yet. Close every recorded owner\n                    # without collectives and retain failures for shutdown retry.\n                    pending = getattr(self, \"_shared_engram_shutdown_pending\", [])\n                    for owner in owners:\n                        try:",
+              "sourceKey": "ed64feb6ae6f86a4988dde9f",
+              "hash": "207a6698daaca586f93375de5232ccc3bf818585c7c7defc381c58d6daa6fe48",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/v2/model_runner.py#L352-L360"
+            }
+          ]
+        },
+        {
+          "from": "upstream-load",
+          "to": "loader-load",
+          "label": "默认 loader",
+          "kind": "inheritance",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/v1/worker/gpu/model_runner.py",
+              "symbol": "GPUModelRunner.load_model",
+              "start": 423,
+              "end": 431,
+              "line": 425,
+              "code": "            # Capture warmup providers selected while constructing the model.\n            with self.jit_warmup_registry.activate():\n                self.model = model or model_loader.load_model(\n                    vllm_config=self.vllm_config,\n                    model_config=self.vllm_config.model_config,\n                )\n            log_layer_backends(self.model, self.vllm_config.model_config)\n            if self.lora_config:\n                self.model = self.load_lora_model(",
+              "sourceKey": "f2edbef61e7fb32de4cd75b3",
+              "hash": "ae1e483c76de627446d2cce1b68326a88f26d15d53eaf6571b66f3b87500a98b",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/v1/worker/gpu/model_runner.py#L423-L431"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/model_loader/default_loader.py",
+              "symbol": "DefaultModelLoader",
+              "start": 56,
+              "end": 61,
+              "line": 58,
+              "code": "\n\nclass DefaultModelLoader(BaseModelLoader):\n    \"\"\"Model loader that can load different file types from disk.\"\"\"\n\n    # default number of thread when enable multithread weight loading",
+              "sourceKey": "6dbbd6361d275faf7b1d5327",
+              "hash": "472721d45b1024671c6fa693cb1eec0126fff77cbccae6e5c34116f2683fd8ef",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/default_loader.py#L56-L61"
+            }
+          ]
+        },
+        {
+          "from": "loader-load",
+          "to": "create",
+          "label": "创建模型",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/model_loader/base_loader.py",
+              "symbol": "BaseModelLoader.load_model",
+              "start": 141,
+              "end": 149,
+              "line": 143,
+              "code": "            with target_device:\n                time_before_load = time.perf_counter()\n                model = self.create_model(\n                    vllm_config=vllm_config,\n                    model_config=model_config,\n                    prefix=prefix,\n                )\n                time_after_load = time.perf_counter()\n                logger.info_once(",
+              "sourceKey": "c8380540d418f263bf949941",
+              "hash": "cf90454a607b13025f6baff190fdfdc295ab9875dd0c1fec61a9994e7fa667d8",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/base_loader.py#L141-L149"
+            }
+          ]
+        },
+        {
+          "from": "create",
+          "to": "initialize",
+          "label": "调用",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/model_loader/base_loader.py",
+              "symbol": "BaseModelLoader.create_model",
+              "start": 106,
+              "end": 114,
+              "line": 108,
+              "code": "    ) -> nn.Module:\n        \"\"\"Create a model with the given configurations.\"\"\"\n        model = initialize_model(\n            vllm_config=vllm_config,\n            model_config=model_config,\n            prefix=prefix,\n        )\n        log_online_quantization(vllm_config)\n        log_model_inspection(model)",
+              "sourceKey": "c8380540d418f263bf949941",
+              "hash": "3359869c61ec506de6566341e02009a732d3f685885ea0c03ac3bc88351515c1",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/base_loader.py#L106-L114"
+            }
+          ]
+        },
+        {
+          "from": "initialize",
+          "to": "model",
+          "label": "架构解析",
+          "kind": "dispatch",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/model_loader/utils.py",
+              "symbol": "initialize_model",
+              "start": 108,
+              "end": 116,
+              "line": 110,
+              "code": "        # new-style model class\n        with set_current_vllm_config(vllm_config, check_compile=True, prefix=prefix):\n            model = model_class(vllm_config=vllm_config, prefix=prefix)\n            record_metadata_for_reloading(model)\n            return model\n\n    msg = (\n        \"vLLM model class should accept `vllm_config` and `prefix` as \"\n        \"input arguments. Possibly you have an old-style model class\"",
+              "sourceKey": "15a84d5229ad98bda5509be8",
+              "hash": "f944e3679f380a10e7a39654ba9d72cd7ab97a00634b57cbdf68937556912883",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/model_loader/utils.py#L108-L116"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/models/registry.py",
+              "symbol": "model architecture mapping",
+              "start": 92,
+              "end": 96,
+              "line": 94,
+              "code": "    \"DeciLMForCausalLM\": (\"nemotron_nas\", \"DeciLMForCausalLM\"),\n    \"DeepseekForCausalLM\": (\"deepseek_v2\", \"DeepseekForCausalLM\"),\n    \"DeepseekV2ForCausalLM\": (\"deepseek_v2\", \"DeepseekV2ForCausalLM\"),\n    \"DeepseekV3ForCausalLM\": (\"deepseek_v2\", \"DeepseekV3ForCausalLM\"),\n    \"DeepseekV32ForCausalLM\": (",
+              "sourceKey": "630ce0f9c277f62e1914c716",
+              "hash": "cf8d5de46de5c1de590b3f41760e2b59bf619155692d4ad2c4cac2742f26bb44",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/registry.py#L92-L96"
+            }
+          ]
+        },
+        {
+          "from": "model",
+          "to": "backbone",
+          "label": "构造主干",
+          "kind": "dispatch",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/models/deepseek_v2.py",
+              "symbol": "DeepseekV2ForCausalLM.__init__",
+              "start": 1846,
+              "end": 1854,
+              "line": 1848,
+              "code": "            }\n\n        self.model = self.model_cls(\n            vllm_config=vllm_config, prefix=maybe_prefix(prefix, \"model\")\n        )\n        if get_pp_group().is_last_rank:\n            self.lm_head = ParallelLMHead(\n                config.vocab_size,\n                config.hidden_size,",
+              "sourceKey": "91b8abd442dfa93fdd5bdefa",
+              "hash": "acc1e2fbe04a358d96c0efa8654d38fb6efbd27a472df0bde762e94ba0eb9b59",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L1846-L1854"
+            }
+          ]
+        },
+        {
+          "from": "backbone",
+          "to": "layers",
+          "label": "创建本地层",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/models/deepseek_v2.py",
+              "symbol": "DeepseekV2Model.__init__",
+              "start": 1411,
+              "end": 1419,
+              "line": 1413,
+              "code": "        self.start_layer, self.end_layer, self.layers = make_layers(\n            config.num_hidden_layers,\n            lambda prefix: DeepseekV2DecoderLayer(\n                vllm_config=vllm_config,\n                prefix=prefix,\n                topk_indices_buffer=topk_indices_buffer,\n                index_group_builder=index_group_builder,\n            ),\n            prefix=f\"{prefix}.layers\",",
+              "sourceKey": "91b8abd442dfa93fdd5bdefa",
+              "hash": "ad8689014e5d2af7345096fcf4b698ac11c15db0ba71452364213312166456a7",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L1411-L1419"
+            }
+          ]
+        },
+        {
+          "from": "layers",
+          "to": "decoder",
+          "label": "layer_fn 回调",
           "kind": "callback",
-          "label": "make_layers 执行构造回调",
-          "description": "make_layers 按 PP 本地层范围执行这个 lambda；它才调用 DecoderLayer，并非遗漏了一个普通直调。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/models/utils.py",
+              "symbol": "make_layers",
+              "start": 973,
+              "end": 1016,
+              "line": 975,
+              "code": "\n\ndef make_layers(\n    num_hidden_layers: int,\n    layer_fn: LayerFn,\n    prefix: str,\n) -> tuple[int, int, torch.nn.ModuleList]:\n    \"\"\"Make a list of layers with the given layer function, taking\n    pipeline parallelism into account.\n\n    Args:\n        num_hidden_layers: Total number of hidden layers in the model.\n        layer_fn: Function to create a layer given its index.\n        prefix: Prefix for layer names.\n\n    Returns:\n        Tuple of (start_layer, end_layer, modules).\n\n    \"\"\"\n    from vllm.distributed.parallel_state import get_pp_group\n    from vllm.distributed.utils import get_pp_indices\n    from vllm.model_executor.offloader import get_offloader\n\n    start_layer, end_layer = get_pp_indices(\n        num_hidden_layers, get_pp_group().rank_in_group, get_pp_group().world_size\n    )\n\n    modules = torch.nn.ModuleList(\n        [PPMissingLayer() for _ in range(start_layer)]\n        + get_offloader().wrap_modules(\n            layer_fn(prefix=f\"{prefix}.{idx}\") for idx in range(start_layer, end_layer)\n        )\n        + [PPMissingLayer() for _ in range(end_layer, num_hidden_layers)]\n    )\n\n    return start_layer, end_layer, modules\n\n\n# NOTE: don't use lru_cache here because it can prevent garbage collection\n_model_to_pp_missing_layer_names: dict[int, list[str]] = {}\n\n\ndef get_pp_missing_layer_names(model: torch.nn.Module) -> list[str]:\n    \"\"\"Get the names of the missing layers in a pipeline parallel model.\"\"\"",
+              "sourceKey": "2b82ea011a6999ae9ab64eb3",
+              "hash": "cf3c24906bcd6139fa2c6601da2ff7d0cf2254f88a0ba3ce25001fab097fd2e2",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/utils.py#L973-L1016"
+            }
+          ]
         },
         {
+          "from": "decoder",
+          "to": "moe",
+          "label": "当前 MoE 层",
           "kind": "conditional",
-          "label": "is_moe_layer 分支",
-          "description": "仅 is_moe_layer 分支构造 MoE；dense 层走另一支。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/models/deepseek_v2.py",
+              "symbol": "DeepseekV2DecoderLayer.__init__",
+              "start": 1272,
+              "end": 1280,
+              "line": 1274,
+              "code": "                # forward() only compensates in FP16 when not using MHA.\n                routed_scale_mode = RoutedScaleMode.OUTPUT_FP16_GUARD\n            self.mlp = DeepseekV2MoE(\n                config=config,\n                parallel_config=parallel_config,\n                quant_config=quant_config,\n                prefix=f\"{prefix}.mlp\",\n                routed_scale_mode=routed_scale_mode,\n            )",
+              "sourceKey": "91b8abd442dfa93fdd5bdefa",
+              "hash": "4d8f53c4ef61138ea3de8c958d0741acb566ebe4581c0347cbb92fbaea8ac728",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L1272-L1280"
+            }
+          ]
         },
         {
+          "from": "factory-binding",
+          "to": "moe",
+          "label": "启动时替换",
+          "kind": "binding",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+              "symbol": "factory binding replacement",
+              "start": 222,
+              "end": 233,
+              "line": 224,
+              "code": "\n\n_fused_moe_layer.FusedMoEFactory = _ascend_FusedMoE\n_fused_moe_pkg.FusedMoEFactory = _ascend_FusedMoE\n\n\nfor module_name, module in list(sys.modules.items()):\n    if not module_name.startswith(\"vllm.model_executor.models\") or module is None:\n        continue\n    if module.__dict__.get(\"FusedMoEFactory\") is _original_FusedMoE:\n        module.__dict__[\"FusedMoEFactory\"] = _ascend_FusedMoE\n",
+              "sourceKey": "243d95eabb1bc592cb4a1a39",
+              "hash": "00bf9a8f6ffe3bae67ea10199f514aa8b7e91f76d2991b8116a3c2fea1c91f21",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L222-L233"
+            }
+          ]
+        },
+        {
+          "from": "moe",
+          "to": "ascend-factory",
+          "label": "替换后的调用",
           "kind": "registration",
-          "label": "Ascend 替换的工厂绑定",
-          "description": "模型调用名为 FusedMoEFactory 的绑定；Ascend patch 将它替换为 _ascend_FusedMoE。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/models/deepseek_v2.py",
+              "symbol": "DeepseekV2MoE.__init__",
+              "start": 375,
+              "end": 383,
+              "line": 377,
+              "code": "            )\n\n        self.experts = FusedMoEFactory(\n            shared_experts=self.shared_experts,\n            gate=self.gate,\n            num_experts=config.n_routed_experts,\n            top_k=config.num_experts_per_tok,\n            hidden_size=config.hidden_size,\n            intermediate_size=config.moe_intermediate_size,",
+              "sourceKey": "91b8abd442dfa93fdd5bdefa",
+              "hash": "44aff85ef807e72c84bfd1320674a729069065fed60b95b57f2bbdbfc702fff7",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/models/deepseek_v2.py#L375-L383"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+              "symbol": "factory binding replacement",
+              "start": 222,
+              "end": 233,
+              "line": 224,
+              "code": "\n\n_fused_moe_layer.FusedMoEFactory = _ascend_FusedMoE\n_fused_moe_pkg.FusedMoEFactory = _ascend_FusedMoE\n\n\nfor module_name, module in list(sys.modules.items()):\n    if not module_name.startswith(\"vllm.model_executor.models\") or module is None:\n        continue\n    if module.__dict__.get(\"FusedMoEFactory\") is _original_FusedMoE:\n        module.__dict__[\"FusedMoEFactory\"] = _ascend_FusedMoE\n",
+              "sourceKey": "243d95eabb1bc592cb4a1a39",
+              "hash": "00bf9a8f6ffe3bae67ea10199f514aa8b7e91f76d2991b8116a3c2fea1c91f21",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L222-L233"
+            }
+          ]
         },
         {
+          "from": "ascend-factory",
+          "to": "factory",
+          "label": "原始工厂别名",
           "kind": "call",
-          "label": "调用原始工厂",
-          "description": "Ascend 准备 Router、适配专家类，再调用预先保存的上游工厂。"
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+              "symbol": "_ascend_FusedMoE",
+              "start": 194,
+              "end": 202,
+              "line": 196,
+              "code": "    routed_experts_args = dict(routed_experts_args) if routed_experts_args is not None else {}\n    routed_experts_args[\"n_shared_experts\"] = n_shared_experts\n    runner = _original_FusedMoE(\n        *args,\n        num_experts=num_experts,\n        top_k=top_k,\n        renormalize=renormalize,\n        use_grouped_topk=use_grouped_topk,\n        num_expert_group=num_expert_group,",
+              "sourceKey": "243d95eabb1bc592cb4a1a39",
+              "hash": "4b71b323bfdb93f42a2fc3a5695085de2f792eb0489d9f6e744b36c15c21a366",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L194-L202"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+              "symbol": "original factory alias",
+              "start": 48,
+              "end": 52,
+              "line": 50,
+              "code": "\n# Capture the real original before fused_moe.py's module-level code runs.\n_original_FusedMoE = _fused_moe_layer.FusedMoEFactory\n\n",
+              "sourceKey": "243d95eabb1bc592cb4a1a39",
+              "hash": "c7ac89697db3a41bc1f361aee6aab042f4a01b5eb5a5cb97d202017f38c6c67f",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L48-L52"
+            }
+          ],
+          "callName": "_original_FusedMoE"
+        },
+        {
+          "from": "factory",
+          "to": "expert-map",
+          "label": "① 映射管理",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/layer.py",
+              "symbol": "FusedMoEFactory",
+              "start": 301,
+              "end": 309,
+              "line": 303,
+              "code": "    # See ExpertMapManager for a detailed description of what it does and when\n    # it is required.\n    expert_map_manager = ExpertMapManager(\n        max_num_batched_tokens=max_num_batched_tokens,\n        top_k=top_k,\n        global_num_experts=global_num_experts,\n        num_redundant_experts=num_redundant_experts,\n        num_expert_group=num_expert_group,\n        moe_parallel_config=moe_parallel_config,",
+              "sourceKey": "d7569043c66ca0f74c25dd63",
+              "hash": "5f0d233f87848dd404aeb3ca132ba456ab6fc5e31f41140d5664d60349c11b29",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L301-L309"
+            }
+          ]
+        },
+        {
+          "from": "expert-map",
+          "to": "calculate-map",
+          "label": "计算映射",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+              "symbol": "ExpertMapManager.__init__",
+              "start": 233,
+              "end": 239,
+              "line": 235,
+              "code": "\n        # Calculate expert mappings\n        self._calculate_expert_maps()\n\n        # Initialize routing tables if needed\n        self._routing_tables = self._init_routing_tables()\n",
+              "sourceKey": "71f84430f7c989e53fc20e25",
+              "hash": "15ec429ec92d35ab87b7f9388f3ef0cf3670da34b809c2eb90933513c74fae74",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L233-L239"
+            }
+          ]
+        },
+        {
+          "from": "calculate-map",
+          "to": "determine-map",
+          "label": "EP rank/size",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+              "symbol": "ExpertMapManager._calculate_expert_maps",
+              "start": 441,
+              "end": 453,
+              "line": 443,
+              "code": "                self._expert_map,\n                self._expert_mask,\n            ) = determine_expert_map(\n                ep_size=self.ep_size,\n                ep_rank=self.ep_rank,\n                global_num_experts=self.global_num_experts,\n                expert_placement_strategy=self._placement_strategy,\n                num_fused_shared_experts=self.num_fused_shared_experts,\n                return_expert_mask=self.rocm_aiter_enabled,\n            )\n\n        self._local_num_experts += self.num_fused_shared_experts\n",
+              "sourceKey": "71f84430f7c989e53fc20e25",
+              "hash": "f25e88fd2b7fac12d229715dd7ad04efd3c0abeadc49c542f7f0c09ab19bae31",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L441-L453"
+            }
+          ]
+        },
+        {
+          "from": "determine-map",
+          "to": "local-map",
+          "label": "linear 放置",
+          "kind": "flow",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/expert_map_manager.py",
+              "symbol": "determine_expert_map",
+              "start": 73,
+              "end": 82,
+              "line": 75,
+              "code": "\n    # Create an expert map for the local experts\n    if expert_placement_strategy == \"linear\":\n        start_idx = ep_rank * base_experts + min(ep_rank, remainder)\n        expert_map[start_idx : start_idx + local_num_experts] = torch.arange(\n            0, local_num_experts, dtype=torch.int32\n        )\n    elif expert_placement_strategy == \"round_robin\":\n        local_log_experts = torch.arange(\n            ep_rank, global_num_experts, ep_size, dtype=torch.int32",
+              "sourceKey": "71f84430f7c989e53fc20e25",
+              "hash": "832cbb75399f17e0c9a55dbdb2111d20ae431f4f52a0c8bc9cb4a3f7ded765d8",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/expert_map_manager.py#L73-L82"
+            }
+          ]
+        },
+        {
+          "from": "factory",
+          "to": "ascend-experts",
+          "label": "② 权重拥有者",
+          "kind": "registration",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/layer.py",
+              "symbol": "FusedMoEFactory",
+              "start": 433,
+              "end": 441,
+              "line": 435,
+              "code": "\n    assert params_dtype is not None\n    routed_experts = routed_experts_cls(\n        layer_name,\n        params_dtype,\n        moe_config,\n        quant_config,\n        expert_map_manager=expert_map_manager,\n        ckpt_gate_proj_name=ckpt_names[0],",
+              "sourceKey": "d7569043c66ca0f74c25dd63",
+              "hash": "0733a73c5e1ccaed8d370158eefac5f11ddd650528bb4b60c9314406208a353d",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L433-L441"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "register_ascend_customop",
+              "start": 962,
+              "end": 966,
+              "line": 964,
+              "code": "        \"BailingMoELinearAttention\": AscendBailingMoELinearAttention,\n        \"MoERunner\": AscendMoERunner,\n        \"RoutedExperts\": AscendRoutedExperts,\n        \"GateLinear\": AscendGateLinear,\n    }",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "e5f7c0287a569e636a4f58c2e572ab9d4c2fd73f28714f292f64c0e3f9042923",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L962-L966"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+              "symbol": "adapt routed class",
+              "start": 191,
+              "end": 195,
+              "line": 193,
+              "code": "            eplb_state=AscendEplbLayerState() if enable_router_eplb else None,\n        )\n    routed_experts_cls = _adapt_routed_experts_cls(routed_experts_cls)\n    routed_experts_args = dict(routed_experts_args) if routed_experts_args is not None else {}\n    routed_experts_args[\"n_shared_experts\"] = n_shared_experts",
+              "sourceKey": "243d95eabb1bc592cb4a1a39",
+              "hash": "56ed87da337864640c99889bb7fff1c50abc33896b465e78f2de2fbdc4260983",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L191-L195"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.__init__ registration",
+              "start": 214,
+              "end": 218,
+              "line": 216,
+              "code": "        if get_current_hardware_profile().supports(HardwareCapability.ATB_EXTENSIONS):\n            _register_atb_extensions()\n        register_ascend_customop(vllm_config)\n        # init ascend config and soc version\n        ascend_config = init_ascend_config(vllm_config)",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "a392ff5cc504069d39be978bc3bfec93bb9deb0371117465a4bf45876634a3ae",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L214-L218"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "OOT registration loop",
+              "start": 1018,
+              "end": 1022,
+              "line": 1020,
+              "code": "\n    for name, op_cls in REGISTERED_ASCEND_OPS.items():\n        CustomOp.register_oot(_decorated_op_cls=op_cls, name=name)\n\n    # NOTE: Keep this at last to ensure all custom actions are registered",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "bdad49e322a6a6821a210f053e4d7eb78a48a232fe1dcc5df9033b61ba274062",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L1018-L1022"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/custom_op.py",
+              "symbol": "PluggableLayer.__new__",
+              "start": 44,
+              "end": 69,
+              "line": 46,
+              "code": "    \"\"\"\n\n    def __new__(cls, *args, **kwargs):\n        try:\n            layer_class_name = cls.__name__\n        except AttributeError:\n            raise TypeError(\n                f\"Cannot instantiate '{cls.__name__}': its 'name' attribute \"\n                f\"was not set, possibly because it was not decorated with \"\n                f\"@PluggableLayer.register, or it's the PluggableLayer itself.\"\n            ) from None\n\n        if layer_class_name not in op_registry_oot:\n            layer_cls_to_instantiate = cls\n        else:\n            layer_cls_to_instantiate = op_registry_oot[layer_class_name]\n            logger.debug(\n                \"Instantiating pluggable layer: %s using %s\",\n                layer_class_name,\n                str(layer_cls_to_instantiate),\n            )\n        return super().__new__(layer_cls_to_instantiate)\n\n    # Decorator to register pluggable layers.\n    @classmethod\n    def register(cls, name: str):",
+              "sourceKey": "2d865e2d43814cb4020726d1",
+              "hash": "2025c070b205561554397c7124a3d90161ebad4924b2ab972a1088734f3118f3",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/custom_op.py#L44-L69"
+            }
+          ]
+        },
+        {
+          "from": "local-map",
+          "to": "ascend-experts",
+          "label": "传入映射",
+          "kind": "flow",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/layer.py",
+              "symbol": "FusedMoEFactory",
+              "start": 433,
+              "end": 441,
+              "line": 435,
+              "code": "\n    assert params_dtype is not None\n    routed_experts = routed_experts_cls(\n        layer_name,\n        params_dtype,\n        moe_config,\n        quant_config,\n        expert_map_manager=expert_map_manager,\n        ckpt_gate_proj_name=ckpt_names[0],",
+              "sourceKey": "d7569043c66ca0f74c25dd63",
+              "hash": "0733a73c5e1ccaed8d370158eefac5f11ddd650528bb4b60c9314406208a353d",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L433-L441"
+            }
+          ]
+        },
+        {
+          "from": "oot",
+          "to": "ascend-experts",
+          "label": "类注册",
+          "kind": "binding",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "register_ascend_customop",
+              "start": 962,
+              "end": 966,
+              "line": 964,
+              "code": "        \"BailingMoELinearAttention\": AscendBailingMoELinearAttention,\n        \"MoERunner\": AscendMoERunner,\n        \"RoutedExperts\": AscendRoutedExperts,\n        \"GateLinear\": AscendGateLinear,\n    }",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "e5f7c0287a569e636a4f58c2e572ab9d4c2fd73f28714f292f64c0e3f9042923",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L962-L966"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/patch/platform/patch_fused_moe.py",
+              "symbol": "adapt routed class",
+              "start": 191,
+              "end": 195,
+              "line": 193,
+              "code": "            eplb_state=AscendEplbLayerState() if enable_router_eplb else None,\n        )\n    routed_experts_cls = _adapt_routed_experts_cls(routed_experts_cls)\n    routed_experts_args = dict(routed_experts_args) if routed_experts_args is not None else {}\n    routed_experts_args[\"n_shared_experts\"] = n_shared_experts",
+              "sourceKey": "243d95eabb1bc592cb4a1a39",
+              "hash": "56ed87da337864640c99889bb7fff1c50abc33896b465e78f2de2fbdc4260983",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/patch/platform/patch_fused_moe.py#L191-L195"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.__init__ registration",
+              "start": 214,
+              "end": 218,
+              "line": 216,
+              "code": "        if get_current_hardware_profile().supports(HardwareCapability.ATB_EXTENSIONS):\n            _register_atb_extensions()\n        register_ascend_customop(vllm_config)\n        # init ascend config and soc version\n        ascend_config = init_ascend_config(vllm_config)",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "a392ff5cc504069d39be978bc3bfec93bb9deb0371117465a4bf45876634a3ae",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L214-L218"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "OOT registration loop",
+              "start": 1018,
+              "end": 1022,
+              "line": 1020,
+              "code": "\n    for name, op_cls in REGISTERED_ASCEND_OPS.items():\n        CustomOp.register_oot(_decorated_op_cls=op_cls, name=name)\n\n    # NOTE: Keep this at last to ensure all custom actions are registered",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "bdad49e322a6a6821a210f053e4d7eb78a48a232fe1dcc5df9033b61ba274062",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L1018-L1022"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/custom_op.py",
+              "symbol": "PluggableLayer.__new__",
+              "start": 44,
+              "end": 69,
+              "line": 46,
+              "code": "    \"\"\"\n\n    def __new__(cls, *args, **kwargs):\n        try:\n            layer_class_name = cls.__name__\n        except AttributeError:\n            raise TypeError(\n                f\"Cannot instantiate '{cls.__name__}': its 'name' attribute \"\n                f\"was not set, possibly because it was not decorated with \"\n                f\"@PluggableLayer.register, or it's the PluggableLayer itself.\"\n            ) from None\n\n        if layer_class_name not in op_registry_oot:\n            layer_cls_to_instantiate = cls\n        else:\n            layer_cls_to_instantiate = op_registry_oot[layer_class_name]\n            logger.debug(\n                \"Instantiating pluggable layer: %s using %s\",\n                layer_class_name,\n                str(layer_cls_to_instantiate),\n            )\n        return super().__new__(layer_cls_to_instantiate)\n\n    # Decorator to register pluggable layers.\n    @classmethod\n    def register(cls, name: str):",
+              "sourceKey": "2d865e2d43814cb4020726d1",
+              "hash": "2025c070b205561554397c7124a3d90161ebad4924b2ab972a1088734f3118f3",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/custom_op.py#L44-L69"
+            }
+          ]
+        },
+        {
+          "from": "ascend-experts",
+          "to": "upstream-experts",
+          "label": "super 初始化",
+          "kind": "inheritance",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/ops/fused_moe/routed_experts.py",
+              "symbol": "AscendRoutedExperts.__init__",
+              "start": 428,
+              "end": 435,
+              "line": 430,
+              "code": "    ):\n        with expert_offload_weights(self, get_ascend_config()):\n            super().__init__(*args, **kwargs)\n        if self.quant_config is None:\n            # Preserve the pre-refactor BF16 lifecycle: let upstream create\n            # weights first, then install the Ascend execution method.\n            self._replace_quant_method(AscendUnquantizedFusedMoEMethod(self.moe_config))\n        self.router: FusedMoERouter | None = None",
+              "sourceKey": "22c7ffcd87ee3a28b9d5d09c",
+              "hash": "9c4967fb3b1366ca963baf859646babea8ed7a4598b57e64125d6460fada78ea",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/routed_experts.py#L428-L435"
+            }
+          ]
+        },
+        {
+          "from": "upstream-experts",
+          "to": "parameters",
+          "label": "create_weights",
+          "kind": "flow",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/routed_experts.py",
+              "symbol": "RoutedExperts.__init__",
+              "start": 230,
+              "end": 236,
+              "line": 232,
+              "code": "        }\n\n        self.quant_method.create_weights(layer=self, **moe_quant_params)\n\n        loader = self.shared_expert_online_loader\n        if loader is not None and loader.stages_shared_experts:\n            loader.create_staging(self, params_dtype, weight_loader=self.weight_loader)",
+              "sourceKey": "d35cbbdf320b0bd37f35f120",
+              "hash": "2d98036152ef63b8abf4a47568ca0a029767174254bb90efdac8e5e6b184e4a9",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/routed_experts.py#L230-L236"
+            }
+          ]
+        },
+        {
+          "from": "factory",
+          "to": "ascend-runner",
+          "label": "③ Runner",
+          "kind": "registration",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/layer.py",
+              "symbol": "FusedMoEFactory",
+              "start": 468,
+              "end": 476,
+              "line": 470,
+              "code": "        runner_cls = MoERunner\n\n    runner = runner_cls(\n        layer_name=layer_name,\n        moe_config=moe_config,\n        router=router,\n        routed_experts=routed_experts,\n        enable_dbo=vllm_config.parallel_config.enable_dbo,\n        gate=gate,",
+              "sourceKey": "d7569043c66ca0f74c25dd63",
+              "hash": "6e9e729c33d7f4ac31545334f66eed2259e1f149768be382e92538af3bf9479f",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L468-L476"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "register_ascend_customop",
+              "start": 961,
+              "end": 965,
+              "line": 963,
+              "code": "        \"CustomQwen2Decoder\": AscendCustomQwen2Decoder,\n        \"BailingMoELinearAttention\": AscendBailingMoELinearAttention,\n        \"MoERunner\": AscendMoERunner,\n        \"RoutedExperts\": AscendRoutedExperts,\n        \"GateLinear\": AscendGateLinear,",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "43f7a75129c82343ff3e6e8f897bd1cfa223cc4f81936c123f8d44fc2251db26",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L961-L965"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.__init__ registration",
+              "start": 214,
+              "end": 218,
+              "line": 216,
+              "code": "        if get_current_hardware_profile().supports(HardwareCapability.ATB_EXTENSIONS):\n            _register_atb_extensions()\n        register_ascend_customop(vllm_config)\n        # init ascend config and soc version\n        ascend_config = init_ascend_config(vllm_config)",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "a392ff5cc504069d39be978bc3bfec93bb9deb0371117465a4bf45876634a3ae",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L214-L218"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "OOT registration loop",
+              "start": 1018,
+              "end": 1022,
+              "line": 1020,
+              "code": "\n    for name, op_cls in REGISTERED_ASCEND_OPS.items():\n        CustomOp.register_oot(_decorated_op_cls=op_cls, name=name)\n\n    # NOTE: Keep this at last to ensure all custom actions are registered",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "bdad49e322a6a6821a210f053e4d7eb78a48a232fe1dcc5df9033b61ba274062",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L1018-L1022"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/custom_op.py",
+              "symbol": "PluggableLayer.__new__",
+              "start": 44,
+              "end": 69,
+              "line": 46,
+              "code": "    \"\"\"\n\n    def __new__(cls, *args, **kwargs):\n        try:\n            layer_class_name = cls.__name__\n        except AttributeError:\n            raise TypeError(\n                f\"Cannot instantiate '{cls.__name__}': its 'name' attribute \"\n                f\"was not set, possibly because it was not decorated with \"\n                f\"@PluggableLayer.register, or it's the PluggableLayer itself.\"\n            ) from None\n\n        if layer_class_name not in op_registry_oot:\n            layer_cls_to_instantiate = cls\n        else:\n            layer_cls_to_instantiate = op_registry_oot[layer_class_name]\n            logger.debug(\n                \"Instantiating pluggable layer: %s using %s\",\n                layer_class_name,\n                str(layer_cls_to_instantiate),\n            )\n        return super().__new__(layer_cls_to_instantiate)\n\n    # Decorator to register pluggable layers.\n    @classmethod\n    def register(cls, name: str):",
+              "sourceKey": "2d865e2d43814cb4020726d1",
+              "hash": "2025c070b205561554397c7124a3d90161ebad4924b2ab972a1088734f3118f3",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/custom_op.py#L44-L69"
+            }
+          ],
+          "channel": 2
+        },
+        {
+          "from": "oot",
+          "to": "ascend-runner",
+          "label": "类注册",
+          "kind": "binding",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "register_ascend_customop",
+              "start": 961,
+              "end": 965,
+              "line": 963,
+              "code": "        \"CustomQwen2Decoder\": AscendCustomQwen2Decoder,\n        \"BailingMoELinearAttention\": AscendBailingMoELinearAttention,\n        \"MoERunner\": AscendMoERunner,\n        \"RoutedExperts\": AscendRoutedExperts,\n        \"GateLinear\": AscendGateLinear,",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "43f7a75129c82343ff3e6e8f897bd1cfa223cc4f81936c123f8d44fc2251db26",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L961-L965"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/worker/worker.py",
+              "symbol": "NPUWorker.__init__ registration",
+              "start": 214,
+              "end": 218,
+              "line": 216,
+              "code": "        if get_current_hardware_profile().supports(HardwareCapability.ATB_EXTENSIONS):\n            _register_atb_extensions()\n        register_ascend_customop(vllm_config)\n        # init ascend config and soc version\n        ascend_config = init_ascend_config(vllm_config)",
+              "sourceKey": "54813ef03ea8568b3d2c9ea5",
+              "hash": "a392ff5cc504069d39be978bc3bfec93bb9deb0371117465a4bf45876634a3ae",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/worker/worker.py#L214-L218"
+            },
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/utils.py",
+              "symbol": "OOT registration loop",
+              "start": 1018,
+              "end": 1022,
+              "line": 1020,
+              "code": "\n    for name, op_cls in REGISTERED_ASCEND_OPS.items():\n        CustomOp.register_oot(_decorated_op_cls=op_cls, name=name)\n\n    # NOTE: Keep this at last to ensure all custom actions are registered",
+              "sourceKey": "e05138ff28446913cbed65eb",
+              "hash": "bdad49e322a6a6821a210f053e4d7eb78a48a232fe1dcc5df9033b61ba274062",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/utils.py#L1018-L1022"
+            },
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/custom_op.py",
+              "symbol": "PluggableLayer.__new__",
+              "start": 44,
+              "end": 69,
+              "line": 46,
+              "code": "    \"\"\"\n\n    def __new__(cls, *args, **kwargs):\n        try:\n            layer_class_name = cls.__name__\n        except AttributeError:\n            raise TypeError(\n                f\"Cannot instantiate '{cls.__name__}': its 'name' attribute \"\n                f\"was not set, possibly because it was not decorated with \"\n                f\"@PluggableLayer.register, or it's the PluggableLayer itself.\"\n            ) from None\n\n        if layer_class_name not in op_registry_oot:\n            layer_cls_to_instantiate = cls\n        else:\n            layer_cls_to_instantiate = op_registry_oot[layer_class_name]\n            logger.debug(\n                \"Instantiating pluggable layer: %s using %s\",\n                layer_class_name,\n                str(layer_cls_to_instantiate),\n            )\n        return super().__new__(layer_cls_to_instantiate)\n\n    # Decorator to register pluggable layers.\n    @classmethod\n    def register(cls, name: str):",
+              "sourceKey": "2d865e2d43814cb4020726d1",
+              "hash": "2025c070b205561554397c7124a3d90161ebad4924b2ab972a1088734f3118f3",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/custom_op.py#L44-L69"
+            }
+          ],
+          "side": "right",
+          "channel": 1
+        },
+        {
+          "from": "ascend-runner",
+          "to": "upstream-runner",
+          "label": "super 初始化",
+          "kind": "inheritance",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/ops/fused_moe/fused_moe.py",
+              "symbol": "AscendMoERunner.__init__",
+              "start": 111,
+              "end": 124,
+              "line": 113,
+              "code": "                )\n            scaling_kwargs[\"routed_scale_mode\"] = routed_scale_mode\n        super().__init__(\n            layer_name,\n            moe_config,\n            router,\n            routed_experts,\n            enable_dbo,\n            gate,\n            shared_experts,\n            shared_expert_gate,\n            routed_input_transform,\n            routed_output_transform,\n            routed_scaling_factor,",
+              "sourceKey": "e35bbb8802620e2e6e9c0ea4",
+              "hash": "b49debcce8c5eafae92e67d45706a59375c7140d4aff9d05e50145b5fea66dfa",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/fused_moe.py#L111-L124"
+            }
+          ]
+        },
+        {
+          "from": "ascend-runner",
+          "to": "comm-setup",
+          "label": "通信实现",
+          "kind": "call",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm-ascend",
+              "sha": "b54afa62e8554caee22715d90ffe6a018d541b42",
+              "file": "vllm_ascend/ops/fused_moe/fused_moe.py",
+              "symbol": "AscendMoERunner.__init__",
+              "start": 158,
+              "end": 166,
+              "line": 160,
+              "code": "                self._forward_entry = torch.ops.vllm.ascend_moe_forward_shared_sp\n\n        setup_moe_comm_method(self.moe_config)\n        # Communication objects are shared across MoE layers. Keep the bound\n        # activation with its owning layer when a later layer replaces them.\n        self.routed_experts.mega_moe_activation_kwargs = getattr(\n            get_moe_comm_method(MoECommType.FUSED_MC2, self.moe_config), \"mega_moe_activation_kwargs\", None\n        )\n        alltoall_comm = get_moe_comm_method(MoECommType.ALLTOALL, self.moe_config)",
+              "sourceKey": "e35bbb8802620e2e6e9c0ea4",
+              "hash": "a3917945089f3f940643cbde351a46cd2ae3442fcdd50062d6f78f85258551bc",
+              "url": "https://github.com/vllm-project/vllm-ascend/blob/b54afa62e8554caee22715d90ffe6a018d541b42/vllm_ascend/ops/fused_moe/fused_moe.py#L158-L166"
+            }
+          ]
+        },
+        {
+          "from": "comm-setup",
+          "to": "result",
+          "label": "构造返回",
+          "kind": "return",
+          "sources": [
+            {
+              "repo": "vllm-project/vllm",
+              "sha": "6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8",
+              "file": "vllm/model_executor/layers/fused_moe/layer.py",
+              "symbol": "FusedMoEFactory",
+              "start": 488,
+              "end": 492,
+              "line": 490,
+              "code": "    )\n\n    return runner\n\n",
+              "sourceKey": "d7569043c66ca0f74c25dd63",
+              "hash": "ebe185ec98b4fa27eef26f75d561c8bd1a91eac8c6d0493383527c891ff9b0cc",
+              "url": "https://github.com/vllm-project/vllm/blob/6ed3615cf6a3cb7921a26bc3d59949a789fd2bf8/vllm/model_executor/layers/fused_moe/layer.py#L488-L492"
+            }
+          ],
+          "description": "setup 返回 AscendMoERunner，再返回上游工厂；不是 setup 直接调用上游工厂。"
         }
       ]
     }

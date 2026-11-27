@@ -22,7 +22,11 @@ EP 数据由 `tools/generate.mjs` 从固定源码缓存提取。`npm run sources
 
 调用路径采用 `callPaths[].groups[].edges[]`。每条边含 `from/to/site/support/description/kind`；`kind` 区分 call、dispatch、conditional、return、continuation、inheritance、construct、callback、registration。`site` 是调用点；`support` 是继承/注册等补充证据。阶段先后不能标成 call；工厂内部不同构造动作不能伪装为对象之间互相调用。
 
-上述 `callPaths` 为证据目录，不直接渲染到模块页。`transitions.mjs` 从证据目录组织 `transitionPaths`：`steps` 保存唯一的函数定义、职责和旁边折叠的源码，`links` 按相邻步骤记录箭头类型与说明，数量必须为步骤数减一。每条路径内同一函数只画一次；沿栈返回明确标为 return。场景的 `connectors = [{path,from,to,caption}]` 在模块连线上生成可点击圆点；`path` 对应路径 ID。通用画布和右侧流程图不硬编码 EP 函数名。当前只启用 groups→factory 这一处入口。
+上述 `callPaths` 为证据目录，不直接渲染到模块页。`logic-graphs.mjs` 组织 `transitionPaths` 的有向图：`nodes` 保存 id、逻辑 row、定义、职责、源码及 type（function/decision/operation/binding/state/boundary）；`slot` 指定同一仓库内的分支列。`edges` 明确 from/to、kind、label 和调用点 sources，不再由列表相邻位置推断调用。通用渲染器按定义所属仓库放入左右大框，自动测量节点位置画连线，展开源码后重排；每张图提供收起全部源码。普通 call 边检查目标调用名称，动态分发、继承与注册仍需人工核对补充证据。flow 是函数内部推进，不能冒充相邻函数直接调用；return 说明沿栈返回。
+
+场景的 `connectors = [{path,from,to,caption}]` 在模块连线上生成圆点，省略 from 表示模块前的入口；当前支持建组前与建组后两图。新增特性复用同一协议，UI 不硬编码 EP 函数名。顶部笔记管理窗口只挂载一次，导入后刷新所有已渲染源码窗口。
+
+控制图的阅读范围：只画当前特性的关键主路径与相关条件，不把源码中所有通用判断都搬入图。省略的分支应写入 scope，必要的跨函数桥接仍要保留。别名调用可声明 `callName`，并附保存原始绑定的源码证据；测试校验别名调用点，不能把别名当成另一个函数。
 
 `sourceFiles` 索引到按完整 SHA 提取的全文 JSON，源码阅读器按需加载。`app/source-reader.js` 和 `notes-store.js` 不依赖 EP 类名；新特性使用相同源码/笔记协议即可复用。个人笔记不写入构建产物，源码版本不匹配的导入会被拒绝。
 

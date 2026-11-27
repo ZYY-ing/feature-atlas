@@ -1,11 +1,12 @@
 import {setupInspectorResize} from './panel-resize.js';
 import {createSourceTools} from './source-reader.js';
-import {callPathsHtml} from './call-path.js';
+import {callPathsHtml,bindCallPaths} from './call-path.js';
 const registry=await fetch(new URL('../features/registry.json',import.meta.url)).then(r=>r.json());
 const feature=registry.find(f=>f.id===new URLSearchParams(location.search).get('feature'))||registry[0];
 const atlasUrl=new URL('../features/'+feature.data.replace(/^\.\//,''),import.meta.url);
 const atlas=await fetch(atlasUrl).then(r=>{if(!r.ok)throw Error('无法载入特性数据');return r.json()});
 const sourceTools=createSourceTools({files:atlas.sourceFiles||{},baseUrl:atlasUrl});
+let cleanupCallMap=()=>{};
 const {nodes,scenes,manifest}=atlas, byId=new Map(nodes.map(n=>[n.id,n]));
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const list=items=>`<ol>${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`;
@@ -14,6 +15,7 @@ let state={scene:'overview',selected:null,trace:null,tab:'principle',backend:'AL
 function restore(){const q=new URLSearchParams(location.hash.slice(1));if(scenes.some(s=>s.id===q.get('view')))state.scene=q.get('view');state.selected=byId.has(q.get('node'))?q.get('node'):null;state.trace=(atlas.transitionPaths||[]).some(p=>p.id===q.get('path'))?q.get('path'):null;if(state.trace){state.selected=null;state.scene=scenes.find(s=>s.connectors?.some(c=>c.path===state.trace))?.id||state.scene;state.tab='code'}if(['ALLTOALL','ALLGATHER','MC2','FUSED_MC2'].includes(q.get('backend')))state.backend=q.get('backend');if(['principle','tensor','code'].includes(q.get('tab')))state.tab=q.get('tab');}
 restore();
 if(state.selected||state.trace)document.body.classList.add('detail-open');
+if(state.trace)document.body.classList.add('trace-expanded');
 function scene(){const s=scenes.find(s=>s.id===state.scene)||scenes[0];return {...s,...s.variants?.[state.backend]};}
 function urlState(){history.replaceState(null,'',`#view=${state.scene}${state.selected?'&node='+state.selected:''}${state.trace?'&path='+state.trace:''}${scene().variants?'&backend='+state.backend:''}${state.tab!=='principle'?'&tab='+state.tab:''}`)}
 document.body.classList.toggle('dark',localStorage.getItem('feature-atlas-theme')==='dark');
@@ -26,6 +28,11 @@ document.querySelector('#app').innerHTML=`
 <div class="panel-resizer" role="separator" aria-label="调整右侧面板宽度" aria-orientation="vertical" aria-controls="detail" tabindex="0" title="左右拖动调整宽度；双击恢复默认；方向键微调"></div><aside class="inspector" aria-label="节点详情"><div class="inspector-heading"><span>阅读助手 <small>PRINCIPLE · TENSOR · SOURCE</small></span><button id="close-detail" aria-label="收起讲解">×</button></div><div id="detail"></div></aside></div>
 <dialog id="info-dialog"><button class="dialog-close" aria-label="关闭版本说明">×</button><span class="eyebrow">FIXED SOURCE / ${esc(manifest.version)}</span><h2>版本与核查说明</h2><p>${esc(manifest.audit?.intro||manifest.coverage)}</p><table><tr><th>材料</th><th>版本</th></tr>${[...Object.entries(manifest.versions).map(([k,v])=>({label:'本站 '+k,sha:v.sha})),...(manifest.audit?.comparison||[])].map(v=>`<tr><td>${esc(v.label)}</td><td><code>${esc(v.sha)}</code></td></tr>`).join('')}</table><p>${esc(manifest.audit?.conclusion||manifest.coverage)}</p>${manifest.audit?.report?`<a href="${esc(manifest.audit.report)}" target="_blank" rel="noreferrer">阅读逐项核查与源码依据</a>`:''}<p>${manifest.audit?.reference?`<a href="${esc(manifest.audit.reference)}" target="_blank" rel="noreferrer">课程参考</a> · `:''}<a href="https://github.com/ZYY-ing/feature-atlas/blob/main/docs/adding-features.md" target="_blank" rel="noreferrer">开发者：扩展新特性</a></p></dialog>`;
 
+document.querySelector('.header-actions').insertAdjacentHTML('afterbegin','<button id="notes-manager-button" class="notes-main-label">笔记<span>管理</span></button>');
+document.querySelector('#app').insertAdjacentHTML('beforeend',`<dialog id="notes-dialog" aria-label="全站笔记管理"><button class="dialog-close" id="close-notes" aria-label="关闭笔记管理">×</button><h2>笔记管理</h2><p class="notes-count" data-notes-count></p>${sourceTools.controls()}</dialog>`);
+sourceTools.bind(document.querySelector('#notes-dialog'));
+document.querySelector('#notes-manager-button').onclick=()=>{sourceTools.flush(document);sourceTools.updateCounts();document.querySelector('#notes-dialog').showModal()};
+document.querySelector('#close-notes').onclick=()=>document.querySelector('#notes-dialog').close();
 document.querySelector('.brand').onclick=e=>{e.preventDefault();changeScene('overview')};
 document.querySelector('.feature-pick select').onchange=e=>{location.href='?feature='+encodeURIComponent(e.target.value)};
 document.querySelector('.framework-nav').onclick=e=>{const b=e.target.closest('[data-scene]');if(b)changeScene(b.dataset.scene)};
@@ -33,20 +40,20 @@ document.querySelector('#guide').onclick=()=>choose(null);
 document.querySelector('#help').onclick=()=>document.querySelector('dialog').showModal();
 document.querySelector('.dialog-close').onclick=()=>document.querySelector('dialog').close();
 document.querySelector('#theme').onclick=()=>{document.body.classList.toggle('dark');localStorage.setItem('feature-atlas-theme',document.body.classList.contains('dark')?'dark':'light')};
-document.querySelector('#close-detail').onclick=()=>{document.body.classList.remove('detail-open');document.body.classList.add('inspector-hidden')};
+document.querySelector('#close-detail').onclick=()=>{document.body.classList.remove('detail-open','trace-expanded');document.body.classList.add('inspector-hidden')};
 document.querySelector('#show-detail').onclick=()=>{document.body.classList.remove('inspector-hidden');document.body.classList.add('detail-open')};
 setupInspectorResize(document.querySelector('.workspace'),document.querySelector('.panel-resizer'));
 document.querySelector('#zoom-in').onclick=()=>zoom(.1);document.querySelector('#zoom-out').onclick=()=>zoom(-.1);document.querySelector('#fit').onclick=fit;
 document.querySelector('#backend').onchange=e=>{state.backend=e.target.value;state.selected=null;state.tab='principle';render();urlState()};
 window.addEventListener('hashchange',()=>{restore();render()});
-document.addEventListener('keydown',e=>{if(e.key==='Escape')document.body.classList.remove('detail-open')});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.querySelector('dialog[open]'))document.body.classList.remove('detail-open')});
 const stage=document.querySelector('#stage');let drag=null;
 stage.onpointerdown=e=>{if(e.target.closest('button,a,select'))return;drag={x:e.clientX,y:e.clientY,left:stage.scrollLeft,top:stage.scrollTop};stage.setPointerCapture(e.pointerId)};
 stage.onpointermove=e=>{if(drag){stage.scrollLeft=drag.left-(e.clientX-drag.x);stage.scrollTop=drag.top-(e.clientY-drag.y)}};
 stage.onpointerup=stage.onpointercancel=()=>{drag=null};
-function changeScene(id){state.scene=id;state.selected=null;state.trace=null;state.tab='principle';state.zoom=1;render();urlState();stage.scrollTop=0;}
-function choose(id){state.selected=id;state.trace=null;state.tab='principle';document.body.classList.remove('inspector-hidden');document.body.classList.add('detail-open');document.querySelectorAll('.graph-node').forEach(e=>e.classList.toggle('selected',e.dataset.id===id));document.querySelectorAll('[data-trace]').forEach(b=>b.classList.remove('selected'));renderDetail();urlState();}
-function chooseTrace(id){state.trace=id;state.selected=null;state.tab='code';document.body.classList.remove('inspector-hidden');document.body.classList.add('detail-open');document.querySelectorAll('.graph-node').forEach(e=>e.classList.remove('selected'));document.querySelectorAll('[data-trace]').forEach(b=>b.classList.toggle('selected',b.dataset.trace===id));renderDetail();urlState();}
+function changeScene(id){state.scene=id;state.selected=null;state.trace=null;state.tab='principle';state.zoom=1;document.body.classList.remove('trace-expanded');render();urlState();stage.scrollTop=0;}
+function choose(id){state.selected=id;state.trace=null;state.tab='principle';document.body.classList.remove('inspector-hidden','trace-expanded');document.body.classList.add('detail-open');document.querySelectorAll('.graph-node').forEach(e=>e.classList.toggle('selected',e.dataset.id===id));document.querySelectorAll('[data-trace]').forEach(b=>b.classList.remove('selected'));renderDetail();urlState();}
+function chooseTrace(id){state.trace=id;state.selected=null;state.tab='code';document.body.classList.remove('inspector-hidden');document.body.classList.add('detail-open','trace-expanded');document.querySelectorAll('.graph-node').forEach(e=>e.classList.remove('selected'));document.querySelectorAll('[data-trace]').forEach(b=>b.classList.toggle('selected',b.dataset.trace===id));renderDetail();urlState();}
 function render(){
  const s=scene();
  document.querySelector('#scene-title').textContent=s.name;document.querySelector('#scene-description').textContent=s.desc;
@@ -120,11 +127,12 @@ function lessonHtml(l,tab){
  return `<h3>为什么需要这一步</h3><p>${esc(l.why)}</p><h3>输入与输出</h3>${ioHtml(l.io)}<h3>它具体做什么</h3>${list(l.steps)}<div class="example"><span>跟着一个小例子理解</span>${exampleContextHtml(l.exampleContext)}<p>${esc(l.example)}</p>${exampleDetailsHtml(l.exampleDetails)}</div><h3>沿源码怎么读</h3>${list(l.read)}${l.trap?`<div class="callout"><b>理解边界</b><p>${esc(l.trap)}</p></div>`:''}`;
 }
 function ioHtml(io){return io?`<div class="io-contract">${[['input','输入'],['output','输出']].map(([key,title])=>`<section><b>${title}：</b><span>${esc(io[key].meaning)}</span><div><small>样例数据</small><code>${esc(io[key].sample)}</code></div></section>`).join('')}</div><p class="io-boundary">这里说明本步骤读取、产生或更新的数据；初始化函数可能通过对象或全局组状态生效，不表示 Python 必有这些返回值。H/I 为隐藏维/专家中间维。</p>`:''}
-function sourceHtml(n,s){return `${sourceTools.controls()}${n?`<h3>本节点源码</h3><p>${esc(n.summary)}</p>${list(n.lesson.read)}${n.sources.map(e=>sourceTools.render(e)).join('')}<p class="evidence-note">◇ 阅读提示 · ● 已有个人笔记 · 完整文件保留原始行号和版权声明。</p>${n.note?`<div class="callout">${esc(n.note)}</div>`:''}`:`<h3>本框架的源码入口</h3><p>选择节点阅读源码；模块之间的调用路径通过画布上的圆点展开。</p>${s.ids.map(id=>jump(id)).join('')}`}`}
+function sourceHtml(n,s){return n?`<h3>本节点源码</h3><p>${esc(n.summary)}</p>${list(n.lesson.read)}${n.sources.map(e=>sourceTools.render(e)).join('')}<p class="evidence-note">◇ 阅读提示 · ● 已有个人笔记 · 完整文件保留原始行号和版权声明。</p>${n.note?`<div class="callout">${esc(n.note)}</div>`:''}`:`<h3>本框架的源码入口</h3><p>选择节点阅读源码；模块之间的调用路径通过画布上的圆点展开。</p>${s.ids.map(id=>jump(id)).join('')}`}
 function renderDetail(){
+ cleanupCallMap();cleanupCallMap=()=>{};
  sourceTools.flush?.(document.querySelector('#detail'));sourceTools.reset();
  const trace=(atlas.transitionPaths||[]).find(p=>p.id===state.trace);
- if(trace){document.querySelector('#detail').innerHTML=`<div class="detail-top"><span class="eyebrow">模块之间 · 调用链</span><h2>${esc(trace.title)}</h2></div><div class="detail-content trace-detail"><details class="trace-notes"><summary>全部源码笔记：导入 / 导出</summary>${sourceTools.controls()}</details>${callPathsHtml([trace],sourceTools)}<div class="detail-bottom"><button id="trace-back">回到本框架导读</button></div></div>`;sourceTools.bind(document.querySelector('#detail'));document.querySelector('#trace-back').onclick=()=>choose(null);return;}
+ if(trace){document.querySelector('#detail').innerHTML=`<div class="detail-top"><span class="eyebrow">模块之间 · 跨仓调用逻辑</span><h2>${esc(trace.title)}</h2></div><div class="detail-content trace-detail">${callPathsHtml([trace],sourceTools)}<div class="detail-bottom"><button id="trace-back">回到本框架导读</button></div></div>`;sourceTools.bind(document.querySelector('#detail'));cleanupCallMap=bindCallPaths(document.querySelector('#detail'),[trace],{flush:()=>sourceTools.flush(document.querySelector('#detail'))});document.querySelector('#trace-back').onclick=()=>choose(null);return;}
  const s=scene(),n=byId.get(state.selected),l=s.nodeLessons?.[n?.id]||n?.lesson||s.lesson;
  const tabs=[['principle','原理'],['tensor','张量 / 公式'],['code','源码与笔记']];
  document.querySelector('#detail').innerHTML=`<div class="detail-top"><span class="eyebrow">${n?(n.repo==='vllm'?'vLLM · UPSTREAM':'ASCEND · ADAPTER'):'FRAMEWORK GUIDE'}</span><h2>${esc(n?.title||s.name)}</h2>${n?`<code class="detail-symbol">${esc(n.symbol)}</code>`:'<p>先理解目的与数据，再进入具体函数。</p>'}</div><div class="detail-tabs" role="tablist">${tabs.map(([id,title])=>`<button role="tab" aria-selected="${state.tab===id}" data-tab="${id}">${title}</button>`).join('')}</div><div class="detail-content">${['principle','tensor'].includes(state.tab)?lessonHtml(l,state.tab):sourceHtml(n,s)}<div class="detail-bottom"><button id="back-guide">回到本框架导读</button></div></div>`;

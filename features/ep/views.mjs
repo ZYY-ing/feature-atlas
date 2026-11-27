@@ -40,6 +40,7 @@ scene('offload','专家 Offload：管理驻留工作集','本快照的独立单 
 // The computation branches are children of the routed-experts framework.
 for(const id of ['routing','comm'])scenes.find(s=>s.id===id).parent='routed';
 scenes.find(s=>s.id==='init').connectors=[
+ {path:'startup-groups',to:'groups',caption:'启动到建组'},
  {path:'groups-factory',from:'groups',to:'factory',caption:'建组到工厂'}
 ];
 scenes.find(s=>s.id==='comm').navLabel='专家通信';

@@ -19,7 +19,7 @@ export function exportReview(output,{view=null}={}){
   `const {setupInspectorResize}=(()=>{${moduleBody('app/panel-resize.js')}\nreturn {setupInspectorResize};})();`,
   `const {NotesStore}=(()=>{${moduleBody('app/notes-store.js')}\nreturn {NotesStore};})();`,
   `const {createSourceTools}=(()=>{${moduleBody('app/source-reader.js')}\nreturn {createSourceTools};})();`,
-  `const {callPathsHtml}=(()=>{${moduleBody('app/call-path.js')}\nreturn {callPathsHtml};})();`,main];
+  `const {callPathsHtml,bindCallPaths}=(()=>{${moduleBody('app/call-path.js')}\nreturn {callPathsHtml,bindCallPaths};})();`,main];
  const css=read('app/style.css').replace(/^@import[^\n]*\n/m,'');
  const license=`<script type="application/json" id="third-party-license">${json({notice:read('THIRD_PARTY_NOTICES.md'),license:read('LICENSES/Apache-2.0.txt')})}</script>`;
  const html=read('index.html').replace('<link rel="stylesheet" href="./app/style.css">',()=>'<style>'+css+'</style>').replace('<link rel="stylesheet" href="./app/call-path.css">',()=>'<style>'+read('app/call-path.css')+'</style>').replace('<script type="module" src="./app/main.js"></script>',()=>license+'<script type="module">'+parts.join('\n')+'</script>');

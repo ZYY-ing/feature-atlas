@@ -27,18 +27,38 @@ test('EP construction returns to orchestrator; factory is reached through model 
  assert.ok(edges.some(e=>e.kind==='inheritance'&&e.from.file.includes('worker/v2/')&&e.to.file.includes('worker/gpu/')));
  for(const e of edges.filter(e=>e.kind==='call'))assert.ok(!/^\s*def /.test(full(e.site)[e.site.line-1]));
 });
-test('one connector opens a continuous chain with unique functions and verified source folds',()=>{
- const scene=a.scenes.find(s=>s.id==='init');assert.equal(scene.connectors.length,1);
- assert.deepEqual([scene.connectors[0].from,scene.connectors[0].to],['groups','factory']);
- const p=a.transitionPaths.find(p=>p.id===scene.connectors[0].path);assert.ok(p);assert.equal(p.links.length,p.steps.length-1);
- const symbols=p.steps.map(s=>s.definition.symbol);assert.equal(new Set(symbols).size,symbols.length);
- assert.equal(symbols[0],'initialize_model_parallel');assert.equal(symbols.at(-1),'FusedMoEFactory');
- assert.equal(p.links[0].kind,'return');
- for(const s of p.steps){evidence(s.definition);for(const e of s.sources)evidence(e)}
- const html=callPathsHtml([p],{render:()=>'<div>source</div>'});
- assert.equal((html.match(/class="trace-function"/g)||[]).length,p.steps.length);
- assert.equal((html.match(/class="trace-arrow /g)||[]).length,p.links.length);
- assert.equal((html.match(/class="trace-code"/g)||[]).length,p.steps.length);
+test('two connector graphs have explicit repository frames, branches and recoverable evidence',()=>{
+ const scene=a.scenes.find(s=>s.id==='init');assert.equal(scene.connectors.length,2);
+ assert.ok(scene.connectors.some(c=>!c.from&&c.to==='groups'));
+ assert.ok(scene.connectors.some(c=>c.from==='groups'&&c.to==='factory'));
+ for(const c of scene.connectors){
+  const p=a.transitionPaths.find(p=>p.id===c.path);assert.ok(p);
+  const ids=new Set(p.nodes.map(n=>n.id));assert.equal(ids.size,p.nodes.length);
+  const symbols=p.nodes.filter(n=>n.type==='function').map(n=>n.definition.symbol);assert.equal(new Set(symbols).size,symbols.length);
+  for(const n of p.nodes){evidence(n.definition);for(const e of n.sources)evidence(e);assert.ok(n.row>=0);}
+  for(const e of p.edges){assert.ok(ids.has(e.from)&&ids.has(e.to));assert.ok(e.sources.length);for(const s of e.sources)evidence(s);}
+  const html=callPathsHtml([p],{render:()=>'<div>source</div>'});
+  assert.equal((html.match(/class="repo-frame /g)||[]).length,2);
+  assert.equal((html.match(/class="map-code"/g)||[]).length,p.nodes.length);
+  assert.ok(html.includes('收起全部源码'));assert.ok(!html.includes('trace-arrow'));
+ }
+});
+test('key decisions remain visible and registration is not mislabeled as a runtime call',()=>{
+ const before=a.transitionPaths.find(p=>p.id==='startup-groups'),after=a.transitionPaths.find(p=>p.id==='groups-factory');
+ assert.equal(before.edges.filter(e=>e.from==='ready?').length,2);
+ for(const id of ['encoder?','elastic?','given?','dense','router?','class?'])assert.ok(!after.nodes.some(n=>n.id===id),id);
+ assert.equal(after.edges.find(e=>e.from==='factory-binding'&&e.to==='moe').kind,'binding');
+ assert.equal(after.edges.find(e=>e.from==='ep'&&e.to==='npu-init').kind,'return');
+ const originalCall=after.edges.find(e=>e.from==='ascend-factory'&&e.to==='factory');assert.equal(originalCall.kind,'call');assert.equal(originalCall.callName,'_original_FusedMoE');assert.ok(originalCall.sources.some(s=>s.code.includes('runner = _original_FusedMoE(')));
+ assert.ok(after.nodes.some(n=>n.definition.symbol==='determine_expert_map'));
+ assert.ok(!after.edges.some(e=>e.from==='ep'&&e.to==='factory'));
+});
+test('direct call edges include their target call name in pinned call-site evidence',()=>{
+ for(const p of a.transitionPaths)for(const e of p.edges.filter(e=>e.kind==='call')){
+  const target=p.nodes.find(n=>n.id===e.to);if(target.type!=='function')continue;
+  const parts=target.definition.symbol.split('.'),name=e.callName||(parts.at(-1)==='__init__'?parts.at(-2):parts.at(-1));
+  assert.ok(e.sources.some(s=>s.code.includes(name+'(')),`${p.id}: ${e.from} → ${e.to}`);
+ }
 });
 const memory=()=>{const m=new Map();return {getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,v)}};
 const meta=Object.values(a.sourceFiles)[0];const code=JSON.parse(fs.readFileSync('features/ep/generated/'+meta.url,'utf8')).code.split('\n');
